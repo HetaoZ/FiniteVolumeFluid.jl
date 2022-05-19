@@ -1,10 +1,9 @@
 struct Block 
     point1::Vector{Float64}
     point2::Vector{Float64}
-end
-
-function Block(point1, point2)
-    return Block(collect(Float64, point1), collect(Float64, point2))
+    function Block(point1, point2)
+        return new(collect(Float64, point1), collect(Float64, point2))
+    end
 end
 
 function in_block(point::Vector{Float64}, block::Block)
@@ -24,6 +23,7 @@ struct StructuredMesh
     NY::Int
     NZ::Int
     indices::CartesianIndices
+    domain_indices::SubArray
     d::Vector{Float64}
     coords::NTuple{3,Vector{Float64}}
 end
@@ -32,7 +32,7 @@ function StructuredMesh(dim::Int = 3, point1::Vector{Float64} = [0,0,0], point2:
 
     @assert dim ∈ (1,2,3)
 
-    # 网格永远是三维的，但物理量是指定维度的。
+    # 网格永远是三维的，但物理量是 dim 维的。
     point1 = expand(point1, 3, 0)
     point2 = expand(point2, 3, 1)
     ncells = expand(ncells, 3, 1)
@@ -60,9 +60,16 @@ function StructuredMesh(dim::Int = 3, point1::Vector{Float64} = [0,0,0], point2:
         z = [point1[3]]
     end
 
-    indices = CartesianIndices((NX, NY, NZ))
+    indices = CartesianIndices((NX,NY,NZ))
+    if dim == 3
+        domain_indices = view(indices, nbound+1:nbound+nx, nbound+1:nbound+ny, nbound+1:nbound+nz)
+    elseif dim == 2
+        domain_indices = view(indices, nbound+1:nbound+nx, nbound+1:nbound+ny, 1)
+    else
+        domain_indices = view(indices, nbound+1:nbound+nx, 1, 1)
+    end
 
-    return StructuredMesh(dim, point1, point2, ncells, nbound, nx, ny, nz, NX, NY, NZ, indices, d, (x, y, z))
+    return StructuredMesh(dim, point1, point2, ncells, nbound, nx, ny, nz, NX, NY, NZ, indices, domain_indices, d, (x, y, z))
 end
 
 @inline function mesh_coords(mesh::StructuredMesh, id::CartesianIndex)
@@ -75,9 +82,9 @@ end
 
 abstract type AbstractRungeKutta end
 
-struct RungeKutta <: AbstractRungeKutta
+struct RungeKutta{N} <: AbstractRungeKutta
     order::Int
-    coeffs::NTuple{order, NTuple{3,Float64}}
+    coeffs::NTuple{N, NTuple{3,Float64}}
 end
 
 function RungeKutta(order::Int)
@@ -88,7 +95,7 @@ function RungeKutta(order::Int)
     else
         error("undef order")
     end
-    return RungeKutta(order, coeffs)
+    return RungeKutta{order}(order, coeffs)
 end
 
 abstract type AbstractRecoScheme end
@@ -107,6 +114,10 @@ function Muscl(order::Int)
     return Muscl(order, stencil_width)
 end
 
+function Muscl()
+    return Muscl(2)
+end
+
 struct Weno <: AbstractRecoScheme
     order::Int
     stencil_width::Int
@@ -121,6 +132,10 @@ struct Ausm <: AbstractFluxScheme
     Kp::Float64
     Ku::Float64
     sigma::Float64
+end
+
+function Ausm()
+    return Ausm(0.25, 0.75, 1.0)
 end
 
 abstract type AbstractBoundary end
@@ -156,21 +171,13 @@ mutable struct Fluid
     flux_scheme::AbstractFluxScheme
 end
 
-function Fluid(; dim::Int = 3, point1::Array = [0, 0, 0], point2::Array = [1, 1, 1], ncells::Vector{Int} = [1, 1, 1], nbound::Int = 1, parameters::Dict = Dict())
+function Fluid(; dim::Int = 3, point1 = [0., 0., 0.], point2 = [1., 1., 1.], ncells = [1, 1, 1], nbound::Int = 1, parameters::Dict = Dict())
 
-    default_para = Dict("rho0"=>0.,
-    "u0"=>[0., 0., 0.],
-    "e0"=>0.,
-    "p0"=>0.,
+    default_para = Dict(
     "gamma"=>1.4,
     "Gamma"=>0.4,
     "inv_gamma_minus_one"=>1/(1.4-1), 
-    "mu"=>1.e-6, 
-    "Pr"=>1.0, 
-    "L0"=>1, 
-    "U0"=>1, 
-    "viscous"=>false,
-    "CFL"=>0.1
+    "CFL"=>0.5
     )
 
     for key in keys(parameters)
@@ -179,7 +186,12 @@ function Fluid(; dim::Int = 3, point1::Array = [0, 0, 0], point2::Array = [1, 1,
     default_para["Gamma"] = default_para["gamma"] - 1
     default_para["inv_gamma_minus_one"] = 1/(default_para["gamma"]-1)
 
-    mesh = StructuredMesh(point1, point2, ncells, nbound)
+    point1 = collect(Float64, point1)
+    point2 = collect(Float64, point2)
+    ncells = collect(Int, ncells)
+
+    mesh = StructuredMesh(dim, point1, point2, ncells, nbound)
+    NX, NY, NZ = mesh.NX, mesh.NY, mesh.NZ
 
     fx = SharedArray(zeros(Float64, (5, NX+1, NY, NZ)))
     fy = SharedArray(zeros(Float64, (1,1,1,1)))
@@ -218,14 +230,14 @@ function Fluid(; dim::Int = 3, point1::Array = [0, 0, 0], point2::Array = [1, 1,
     Ausm(0.25, 1.0, 0.75))
 end
 
-function review(f::Fluid)
+function Base.show(f::Fluid)
     println("-- review of fluid --")
     println("# parameters")
     for k in keys(f.parameters)
         println("  ",k," : ",f.parameters[k])
     end
     println("# mesh")
-    println("  dimension : ", f.dim)
+    println("  dimension : ", f.mesh.dim)
     println("  domain : ", Tuple(f.mesh.point1)," -> ", Tuple(f.mesh.point2))
     println("  number of cells : ", length(f.rho))
     println("  size of cells : ", size(f.rho))
@@ -239,10 +251,14 @@ function review(f::Fluid)
     if f.dim > 2
         println("  axis 3 : ", f.boundaries[3])
     end
-    
+    println("# schemes") 
+    println("  reco scheme : ", f.reco_scheme)
+    println("  flux scheme : ", f.flux_scheme)
+    println("  iter scheme : Runge Kutta of O", f.rungekutta.order)
     println("# physical states")
-    println("  rho ∈  ", [minimum(f.rho), maximum(f.rho)])
-    println("  e ∈  ", [minimum(f.e), maximum(f.e)])
-    println("  p ∈  ", [minimum(f.p), maximum(f.p)])
+    println("  rho ∈  ", [minimum(f.rho[f.mesh.domain_indices]), maximum(f.rho[f.mesh.domain_indices])])
+    println("  e ∈  ", [minimum(f.e[f.mesh.domain_indices]), maximum(f.e[f.mesh.domain_indices])])
+    println("  p ∈  ", [minimum(f.p[f.mesh.domain_indices]), maximum(f.p[f.mesh.domain_indices])])
+    println()
 end
 

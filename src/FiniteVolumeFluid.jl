@@ -9,7 +9,27 @@ using Statistics
 using WriteVTK
 using SharedArrays
 
-export Fluid
+export 
+    Fluid,
+    FreeBoundary,
+    ReflBoundary,
+    Muscl,
+    Weno,
+    LaxFriedrichs,
+    Ausm,
+    RungeKutta
+export 
+    set_initial_condition, 
+    set_parameters,
+    set_boundaries,
+    set_scheme,
+    insert_block,
+    review,
+    time_step!,
+    advance!,
+    save_mesh,
+    save_to_vtk
+
 
 include("base.jl")
 include("utils.jl")
