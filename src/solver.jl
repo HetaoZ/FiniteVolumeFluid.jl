@@ -17,8 +17,7 @@ end
 function time_step!(f::Fluid)
     smax = 0.
     smax = @sync @distributed (max) for id in f.mesh.domain_indices
-        s = sound_speed(f.rho[id], f.p[id], f.parameters["gamma"])
-        smax = maximum([smax; s .+ map(abs, f.u[:,id])])
+        f.marker[id] > 0 ? maximum([smax; sound_speed(f.rho[id], f.p[id], f.parameters["gamma"]) .+ map(abs, f.u[:,id])]) : 0.
     end
     dt = minimum(f.mesh.d[1:f.dim]) / smax * f.parameters["CFL"]
     if isnan(dt) || dt == Inf
@@ -33,14 +32,20 @@ function update_cells!(f::Fluid, rk::Int, dt::Float64)
     coeff = f.rungekutta.coeffs[rk]
 
     @sync @distributed for id in f.mesh.domain_indices
-        w = coeff[1] * f.w[:, id] + coeff[2] * f.wb[:, id] + coeff[3] * f.rhs[:, id] * dt
-        # println((id,f.w[:, id],f.wb[:, id],f.rhs[:, id], dt))
-        f.w[:, id] = w    
-        rho, u, e, p = cons2prim(w, f.parameters["Gamma"])     
-        f.rho[id] = rho
-        f.u[:,id] = u
-        f.e[id] = e
-        f.p[id] = p
+        if f.marker[id] > 0
+            # try
+                w = coeff[1] * f.w[:, id] + coeff[2] * f.wb[:, id] + coeff[3] * f.rhs[:, id] * dt                
+                f.w[:, id] = w    
+                rho, u, e, p = cons2prim(w, f.parameters["Gamma"])     
+                f.rho[id] = rho
+                f.u[:,id] = u
+                f.e[id] = e
+                f.p[id] = p
+            # catch
+            #     println((id,f.w[:, id],f.wb[:, id],f.rhs[:, id], dt))
+            #     error()
+            # end
+        end
     end
 end
 
@@ -52,32 +57,40 @@ function update_rhs!(f::Fluid)
 
     @sync @distributed for id in f.mesh.domain_indices
         
-        point = mesh_coords(f.mesh, id)
+        if f.marker[id] > 0
 
-        rhs = zeros(Float64, dim+2)
-        ws = zeros(Float64, dim+2, stencil_width)
+            point = mesh_coords(f.mesh, id)
+            rhs = zeros(Float64, dim+2)
+            ws = zeros(Float64, dim+2, stencil_width)
 
-        for axis = 1:dim
-            for jj in 1:stencil_width
+            for axis = 1:dim
+                for jj in 1:stencil_width
 
-                pos_direction = jj > half_stencil_width
-                wall = where_is_block_wall(point, axis, pos_direction, f.blocks)
+                    pos_direction = jj > half_stencil_width
+                    wall = where_is_block_wall(point, axis, pos_direction, f.blocks)
 
-                if wall == Missing
-                    ws[:,jj] = copy(f.w[:, add_cartesian(id, axis, jj-half_stencil_width) ])
-                else
-                    # when covered by blocks
-                    iL, iR, λ = image_interpolant1d(f.mesh.coords[axis][id[axis] + jj-half_stencil_width], wall, f.mesh.coords[axis])
-                    image_w = (1.0 - λ) * f.w[:, reset_cartesian(id, axis, iL)] + λ * f.w[:, reset_cartesian(id, axis, iR)]
-                    image_w[1+axis] *= -1.0
-                    ws[:,jj] = image_w
+                    if wall == Missing
+                        ws[:,jj] = copy(f.w[:, add_cartesian(id, axis, jj-half_stencil_width) ])
+                    else
+                        # when covered by blocks
+                        iL, iR, λ = image_interpolant1d(f.mesh.coords[axis][id[axis] + jj-half_stencil_width], wall, f.mesh.coords[axis])
+                        image_w = (1.0 - λ) * f.w[:, reset_cartesian(id, axis, iL)] + λ * f.w[:, reset_cartesian(id, axis, iR)]
+                        image_w[1+axis] *= -1.0
+                        ws[:,jj] = image_w
+                    end
                 end
-            end
 
-            rhs += dflux!(ws, axis, f.reco_scheme, f.flux_scheme, f.parameters) / f.mesh.d[axis]
+                rhs += dflux!(ws, axis, f.reco_scheme, f.flux_scheme, f.parameters) / f.mesh.d[axis]
+
+                # if isnan(rhs)
+                #     println("id, ws = ", (id, ws))
+                #     error("rhs")
+                # end
+            end
+            
+            f.rhs[:,id] = rhs + f.source[:,id]
+
         end
-        
-        f.rhs[:,id] = rhs + f.source[:,id]
     end    
 end 
 

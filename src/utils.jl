@@ -14,3 +14,6 @@ end
     return CartesianIndex(ntuple(k -> k == axis ? new_index : id[k], length(id)))
 end
 
+function Base.isnan(v::Vector{<:Real}) 
+    return any(isnan.(v))
+end

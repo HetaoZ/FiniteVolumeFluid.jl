@@ -262,3 +262,6 @@ function Base.show(f::Fluid)
     println()
 end
 
+function Base.copy(f::Fluid)
+    
+end

@@ -7,7 +7,7 @@ function set_initial_condition(f::Fluid, initial_condition)
 end
 
 function initialize_fluid!(f::Fluid, t::Real)
-    @sync @distributed for id in f.mesh.domain_indices
+    @sync @distributed for id in f.mesh.indices # 用完整的indices以确保边界外的来流条件也可以生效
         prim = f.initial_condition(mesh_coords(f.mesh, id), t)
         if typeof(prim) <: Tuple && length(prim) == 4
             f.rho[id], f.u[:,id], f.e[id], f.p[id] = prim

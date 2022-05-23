@@ -24,11 +24,12 @@ export
     set_boundaries,
     set_scheme,
     insert_block,
-    review,
     time_step!,
     advance!,
     save_mesh,
-    save_to_vtk
+    save_to_vtk,
+    mesh_coords,
+    behind_shock
 
 
 include("base.jl")
