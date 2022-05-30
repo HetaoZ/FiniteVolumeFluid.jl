@@ -73,7 +73,24 @@ function StructuredMesh(dim::Int = 3, point1::Vector{Float64} = [0,0,0], point2:
 end
 
 @inline function mesh_coords(mesh::StructuredMesh, id::CartesianIndex)
-    return [mesh.coords[i][id[i]] for i = 1:3]
+    return [mesh.coords[i][id[i]] for i = 1:mesh.dim]
+end
+
+@inline function lower_id(mesh::StructuredMesh, point::Tuple)
+    return CartesianIndex(ntuple(axis -> max(1, ceil(Int, (point[axis] - mesh.coords[axis][1]) / mesh.d[axis])), 3))
+end
+
+@inline function higher_id(mesh::StructuredMesh, point::Tuple)
+    id = lower_id(mesh, point)
+    for axis = 1:mesh.dim
+        add_cartesian(id, axis, 1)
+    end
+    return id
+end
+
+@inline function region_indices!(mesh::StructuredMesh, point1::Tuple, point2::Tuple; extension::Int = 0)
+    l_id, h_id = lower_id(mesh, point1), higher_id(mesh, point2)
+    return view(mesh.indices, ntuple(axis -> axis <= mesh.dim ? range(max(mesh.nbound+1,l_id[axis] - extension), min(mesh.ncells[axis]+mesh.nbound, h_id[axis] + extension), step = 1) : 1, length(l_id))...)
 end
 
 @inline function in_computational_domain(mesh::StructuredMesh, id::CartesianIndex)
@@ -156,11 +173,10 @@ mutable struct Fluid
     p::SharedArray{Float64,3}
     w::SharedArray{Float64,4}
     wb::SharedArray{Float64,4}
-    fx::SharedArray{Float64,4}
-    fy::SharedArray{Float64,4}
-    fz::SharedArray{Float64,4}
+    flux::Vector{SharedArray{Float64,4}}
     rhs::SharedArray{Float64,4}
     source::SharedArray{Float64,4} 
+    last_marker::SharedArray{Int8,3}
     marker::SharedArray{Int8,3}
     boundaries::Vector{NTuple{2,AbstractBoundary}}
     blocks::Vector{Block}
@@ -171,7 +187,7 @@ mutable struct Fluid
     flux_scheme::AbstractFluxScheme
 end
 
-function Fluid(; dim::Int = 3, point1 = [0., 0., 0.], point2 = [1., 1., 1.], ncells = [1, 1, 1], nbound::Int = 1, parameters::Dict = Dict())
+function Fluid(; dim::Int = 3, point1 = [0., 0., 0.], point2 = [1., 1., 1.], ncells = [1, 1, 1], nbound::Int = 1, parameters::Dict = Dict(), use_marker::Bool = true)
 
     default_para = Dict(
     "gamma"=>1.4,
@@ -193,14 +209,22 @@ function Fluid(; dim::Int = 3, point1 = [0., 0., 0.], point2 = [1., 1., 1.], nce
     mesh = StructuredMesh(dim, point1, point2, ncells, nbound)
     NX, NY, NZ = mesh.NX, mesh.NY, mesh.NZ
 
-    fx = SharedArray(zeros(Float64, (5, NX+1, NY, NZ)))
+    fx = SharedArray(zeros(Float64, (2+dim, NX+1, NY, NZ)))
     fy = SharedArray(zeros(Float64, (1,1,1,1)))
     fz = SharedArray(zeros(Float64, (1,1,1,1)))
     if dim > 1
-        fy = SharedArray(zeros(Float64, (5, NX, NY+1, NZ)))
+        fy = SharedArray(zeros(Float64, (2+dim, NX, NY+1, NZ)))
     end
     if dim > 2
-        fz = SharedArray(zeros(Float64, (5, NX, NY, NZ+1)))
+        fz = SharedArray(zeros(Float64, (2+dim, NX, NY, NZ+1)))
+    end
+
+    if use_marker
+        last_marker = SharedArray(ones(Int8, (NX, NY, NZ)))
+        marker = SharedArray(ones(Int8, (NX, NY, NZ)))
+    else
+        last_marker = SharedArray(ones(Int8, (1,1,1)))
+        marker = SharedArray(ones(Int8, (1,1,1)))
     end
 
     return Fluid(dim, mesh,
@@ -212,14 +236,13 @@ function Fluid(; dim::Int = 3, point1 = [0., 0., 0.], point2 = [1., 1., 1.], nce
     SharedArray(zeros(Float64, (dim+2, NX, NY, NZ))), # w
     SharedArray(zeros(Float64, (dim+2, NX, NY, NZ))), # wb
 
-    fx,
-    fy,
-    fz,
+    [fx, fy, fz],
 
     SharedArray(zeros(Float64, (dim+2, NX, NY, NZ))), # rhs
     SharedArray(zeros(Float64, (dim+2, NX, NY, NZ))), # source
 
-    SharedArray(ones(Int8, (NX, NY, NZ))), # marker
+    last_marker,
+    marker,
 
     [(FreeBoundary, FreeBoundary), (FreeBoundary, FreeBoundary), (FreeBoundary, FreeBoundary),],
     Block[],

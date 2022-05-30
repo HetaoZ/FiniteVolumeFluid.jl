@@ -90,7 +90,7 @@ end
         e = E - 0.5 * norm(u)^2
         p = pressure(rho, e, Gamma)
         
-        flux[1] = rho * u[1]
+        flux[1] = rho * u[axis]
         flux[2:end-1] = rho * u[axis] .* u
         flux[1+axis] += p
         flux[end] = (rho * E + p) * u[axis]
@@ -106,3 +106,7 @@ end
 @inline function cons2flux(axis::Int, Gamma::Float64, ws::Vector{Float64}...)
     return map(w->cons2flux(axis, Gamma, w), ws)
 end
+
+# @inline function flux2prim(axis::Int, Gamma::Float64, flux::Vector{Float64})
+#     rho = flux
+# end

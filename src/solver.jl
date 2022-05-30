@@ -1,6 +1,7 @@
 function advance!(f::Fluid, dt::Float64, t::Real)
     backup_w!(f)
     for rk = 1:f.rungekutta.order
+        update_fluxes!(f)
         update_rhs!(f)
         update_cells!(f, rk, dt)
         update_bounds!(f)
@@ -49,7 +50,7 @@ function update_cells!(f::Fluid, rk::Int, dt::Float64)
     end
 end
 
-function update_rhs!(f::Fluid)
+function update_fluxes!(f::Fluid)
     dim = f.dim
     @assert dim ∈ (1,2,3)
     stencil_width = f.reco_scheme.stencil_width
@@ -80,16 +81,30 @@ function update_rhs!(f::Fluid)
                     end
                 end
 
-                rhs += dflux!(ws, axis, f.reco_scheme, f.flux_scheme, f.parameters) / f.mesh.d[axis]
+                f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.reco_scheme, f.flux_scheme, f.parameters)
+                f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.reco_scheme, f.flux_scheme, f.parameters)
 
                 # if isnan(rhs)
                 #     println("id, ws = ", (id, ws))
                 #     error("rhs")
                 # end
             end
-            
-            f.rhs[:,id] = rhs + f.source[:,id]
+        end
+    end    
+end 
 
+function update_rhs!(f::Fluid)
+    dim = f.dim
+
+    @sync @distributed for id in f.mesh.domain_indices
+        if f.marker[id] > 0
+            rhs = zeros(Float64, dim+2)
+
+            for axis = 1:dim
+                rhs += f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)] / f.mesh.d[axis]
+            end
+
+            f.rhs[:,id] = rhs + f.source[:,id]
         end
     end    
 end 
@@ -117,4 +132,10 @@ end
         end
     end
     return Missing
+end
+
+function backup_marker!(f::Fluid)
+    @sync @distributed for id in f.mesh.indices
+        f.last_marker[id] = f.marker[id]
+    end
 end
