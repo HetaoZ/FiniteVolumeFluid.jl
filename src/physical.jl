@@ -12,7 +12,7 @@ end
 @inline function pressure(w::Vector{Float64}, Gamma::Float64)
     if w[1] > 1e-14
         return Gamma * w[1] * (w[end]/w[1] - 0.5 * norm(w[2:end-1] / w[1])^2)
-    elseif w[1] > 0.
+    elseif w[1] >= 0.
         return 0.
     else
         println("w = ", w)

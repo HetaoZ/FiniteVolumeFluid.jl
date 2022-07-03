@@ -8,7 +8,7 @@ end
 end
 
 @inline function numerical_flux!(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, axis::Int, gamma::Float64, flux_scheme::LaxFriedrichs)
-    return get_lf_flux!(wL, wR, fL, fR, gamma)
+    return get_lf_flux!(wL, wR, fL, fR, gamma, axis)
 end
 
 @inline function numerical_flux!(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, axis::Int, gamma::Float64, flux_scheme::Ausm)
@@ -17,9 +17,8 @@ end
 
 ## _______________________________________________________
 
-@inline function get_lf_flux!(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, gamma::Float64)
-
-    return @. 0.5 * ( fL + fR - max(norm(speed(wL, axis)) + sound_speed(wL, gamma), norm(speed(wR, axis)) + sound_speed(wR, gamma)) * ( wR - wL ) )
+@inline function get_lf_flux!(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, gamma::Float64, axis::Int)
+    return 0.5 * ( fL + fR - max(norm(speed(wL, axis)) + sound_speed(wL, gamma), norm(speed(wR, axis)) + sound_speed(wR, gamma)) * ( wR - wL ) )
 end
 
 function get_ausm_flux!(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, gamma::Float64, axis::Int, ausm::Ausm)

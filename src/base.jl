@@ -105,7 +105,12 @@ struct RungeKutta{N} <: AbstractRungeKutta
 end
 
 function RungeKutta(order::Int)
-    if order == 3
+    if order == 1
+        coeffs = ((1.0, 0.0, 1.0),)
+    # elseif order == 2
+        # coeffs = ((1.0, 0.0, 1.0), 
+        # (0.75, 0.25, 0.25))
+    elseif order == 3
         coeffs = ((1.0, 0.0, 1.0), 
         (0.75, 0.25, 0.25),
         (1/3, 2/3, 2/3))

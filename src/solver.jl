@@ -43,14 +43,22 @@ function update_cells!(f::Fluid, rk::Int, dt::Float64)
                 f.e[id] = e
                 f.p[id] = p
             # catch
-            #     println((id,f.w[:, id],f.wb[:, id],f.rhs[:, id], dt))
+            # if abs(sum(w) - 3.5) > 1e-8
+            #     println((id,f.w[:, id],f.wb[:, id],f.rhs[:, id],dt))
+            #     for axis = 1:3
+            #         println("axis = ", axis)
+            #         println(f.flux[axis][:,id])
+            #         println(f.flux[axis][:,add_cartesian(id, axis, 1)])
+            #         println()
+            #     end
             #     error()
+            # end
             # end
         end
     end
 end
 
-function update_fluxes!(f::Fluid)
+function update_fluxes!(f::Fluid; fluid_markers = (1,))
     dim = f.dim
     @assert dim ∈ (1,2,3)
     stencil_width = f.reco_scheme.stencil_width
@@ -58,10 +66,9 @@ function update_fluxes!(f::Fluid)
 
     @sync @distributed for id in f.mesh.domain_indices
         
-        if f.marker[id] > 0
+        if f.marker[id] in fluid_markers
 
             point = mesh_coords(f.mesh, id)
-            rhs = zeros(Float64, dim+2)
             ws = zeros(Float64, dim+2, stencil_width)
 
             for axis = 1:dim
@@ -101,7 +108,7 @@ function update_rhs!(f::Fluid)
             rhs = zeros(Float64, dim+2)
 
             for axis = 1:dim
-                rhs += f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)] / f.mesh.d[axis]
+                rhs += (f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)]) / f.mesh.d[axis]
             end
 
             f.rhs[:,id] = rhs + f.source[:,id]
