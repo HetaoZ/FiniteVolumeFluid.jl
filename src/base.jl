@@ -131,7 +131,7 @@ struct Muscl <: AbstractRecoScheme
     stencil_width::Int
 end
 
-function Muscl(order::Int)
+function Muscl(order::Int = 2)
     if order == 2
         stencil_width = 5
     else
@@ -140,14 +140,31 @@ function Muscl(order::Int)
     return Muscl(order, stencil_width)
 end
 
-function Muscl()
-    return Muscl(2)
-end
-
 struct Weno <: AbstractRecoScheme
     order::Int
     stencil_width::Int
     smoothness_function::String
+    eps
+    a
+    C
+    p::Int
+end
+
+function Weno(order::Int = 5)
+    if order == 5
+        stencil_width = 5
+    else
+        error("undef order")
+    end
+    return Weno(order, stencil_width, "JS", 
+    1.e-10,
+    ([1/3 -7/6 11/6],
+    [-1/6 5/6 1/3],
+    [1/3 5/6 -1/6],
+    [11/6 -7/6 1/3]),
+    (0.1, 0.6, 0.3),
+    2  # recommended p = r
+    )
 end
 
 abstract type AbstractFluxScheme end

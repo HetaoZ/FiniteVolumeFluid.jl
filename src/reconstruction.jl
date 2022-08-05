@@ -1,5 +1,5 @@
 reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64, reco_scheme::Muscl) = reco_by_muscl!(ws, axis, Gamma)
-reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64, reco_scheme::Weno) = reco_by_weno!(ws, axis, Gamma)
+reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64, reco_scheme::Weno) = reco_by_weno!(ws, axis, Gamma, reco_scheme)
 
 # --------------------------------------------------------------------------------
 # MUSCL scheme
@@ -41,67 +41,51 @@ end
 # ---------------------------------------------------------------------
 # WENO-JS scheme
 
-function reco_by_weno!(ws::Array{Float64, 2}, axis::Int, Gamma::Float64)
-    wL, wR = weno_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], ws[:,5], ws[:,6])
-
+function reco_by_weno!(ws::Array{Float64, 2}, axis::Int, Gamma::Float64, weno::Weno)
+    wL, wR = weno_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], ws[:,5], ws[:,6], weno)
     fL = cons2flux(axis, Gamma, wL)
     fR = cons2flux(axis, Gamma, wR)
-
     return wL, wR, fL, fR
 end
 
 "Jiang-Shu's WENO scheme"
-function weno_interp(FM3::Vector{Float64},FM2::Vector{Float64},FM1::Vector{Float64},FP1::Vector{Float64},FP2::Vector{Float64},FP3::Vector{Float64})
+function weno_interp(FM3::Vector{Float64},FM2::Vector{Float64},FM1::Vector{Float64},FP1::Vector{Float64},FP2::Vector{Float64},FP3::Vector{Float64}, weno::Weno)
     # WENO sample points: (FM3 - FM2 - FM1 - pipe - FP1 - FP2 - FP3)
     # Jiang-Shu's WENO Scheme
-    eps=1.e-10
-    a0 = [1/3 -7/6 11/6]
-    a1 = [-1/6 5/6 1/3]
-    a2 = [1/3 5/6 -1/6]
-    a3 = [11/6 -7/6 1/3]
-    C = [0.1 0.6 0.3]
-    p = 2  # recommended p = r
-    FL = Vector{Float64}(undef,4)
-    FR = Vector{Float64}(undef,4)
-    for k=1:4
-      ## for WL
-      beta0=13/12*( FM3[k]-2*FM2[k]+FM1[k] )^2 + 0.25*( FM3[k]-4*FM2[k]+3*FM1[k] )^2
-      beta1=13/12*( FM2[k]-2*FM1[k]+FP1[k] )^2 + 0.25*( FM2[k]           -FP1[k] )^2
-      beta2=13/12*( FM1[k]-2*FP1[k]+FP2[k] )^2 + 0.25*( 3*FM1[k]-4*FP1[k]+FP2[k] )^2
-      alpha0=C[1]/(eps+beta0)^p
-      alpha1=C[2]/(eps+beta1)^p
-      alpha2=C[3]/(eps+beta2)^p
-      weight0=alpha0/(alpha0+alpha1+alpha2)
-      weight1=alpha1/(alpha0+alpha1+alpha2)
-      weight2=alpha2/(alpha0+alpha1+alpha2)
-      FL[k] = weight0*( a0[1]*FM3[k] + a0[2]*FM2[k] + a0[3]*FM1[k]) + weight1*( a1[1]*FM2[k] + a1[2]*FM1[k] + a1[3]*FP1[k]) + weight2*( a2[1]*FM1[k] + a2[2]*FP1[k] + a2[3]*FP2[k])
-
-
-      # for WR
-      beta0=13/12*( FM2[k]-2*FM1[k]+FP1[k] )^2 + 0.25*( FM2[k]-4*FM1[k]+3*FP1[k] )^2
-      beta1=13/12*( FM1[k]-2*FP1[k]+FP2[k] )^2 + 0.25*( FM1[k]-FP2[k] )^2
-      beta2=13/12*( FP1[k]-2*FP2[k]+FP3[k] )^2 + 0.25*( 3*FP1[k]-4*FP2[k]+FP3[k] )^2
-      alpha0=C[3]/(eps+beta0)^p
-      alpha1=C[2]/(eps+beta1)^p
-      alpha2=C[1]/(eps+beta2)^p
-      weight0=alpha0/(alpha0+alpha1+alpha2)
-      weight1=alpha1/(alpha0+alpha1+alpha2)
-      weight2=alpha2/(alpha0+alpha1+alpha2)
-      FR[k] =  weight0*( a1[1]*FM2[k] + a1[2]*FM1[k] + a1[3]*FP1[k]) + weight1*( a2[1]*FM1[k] + a2[2]*FP1[k] + a2[3]*FP2[k]) + weight2*( a3[1]*FP1[k] + a3[2]*FP2[k] + a3[3]*FP3[k])
-
-    end
-
+    n = length(FM3)
+    FL = [weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k], weno.C, weno.a[1:3], weno.eps, weno.p) for k = 1:n]
+    FR = [weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], reverse(weno.C), weno.a[2:4], weno.eps, weno.p) for k = 1:n]
     return FL,FR
 end
 
-"WENO-Z factor"
-function tau(b1::Float64,b2::Float64,b3::Float64,p::Float64)
-    #tau=(abs(b1-b2)**p +abs(b2-b3)**p +abs(b3-b1)**p )/3.d0
-    #tau=(abs(b1-b2)**p *abs(b2-b3)**p *abs(b3-b1)**p )**(1.d0/3.d0)
-    tau=3/(1/abs(b1-b2)^p +1/abs(b2-b3)^p +1/abs(b3-b1)^p )
-    #tau = abs(b3-b1)
-    return tau
+function weno_getbeta(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64)
+    return (
+        13/12*( f1-2*f2+f3 )^2 + 0.25*( f1-4*f2+3*f3 )^2,
+        13/12*( f2-2*f3+f4 )^2 + 0.25*( f2       -f4 )^2,
+        13/12*( f3-2*f4+f5 )^2 + 0.25*( 3*f3-4*f4+f5 )^2
+    )
 end
+
+function weno_weightedsum(weight::NTuple{3,Float64}, a1::Vector{Float64}, a2::Vector{Float64}, a3::Vector{Float64}, f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64)
+    return dot(weight, (a1[1]*f1 + a1[2]*f2 + a1[3]*f3, a2[1]*f2 + a2[2]*f3 + a2[3]*f4, a3[1]*f3 + a3[2]*f4 + a3[3]*f5))
+end
+
+function weno_getf(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64, C::NTuple{3,Float64}, a::NTuple{3,Vector{Float64}}, eps::Float64, p::Int)
+    β = weno_getbeta(f1,f2,f3,f4,f5)
+    α = map(j -> C[j]/(eps + β[j])^p, β)
+    s = sum(α)
+    weight = α ./ s
+    return weno_weightedsum(weight, a[1], a[2], a[3], f1, f2, f3, f4, f5)
+end
+
+# "WENO-Z factor"
+# function tau(b1::Float64,b2::Float64,b3::Float64,p::Float64)
+#     #tau=(abs(b1-b2)**p +abs(b2-b3)**p +abs(b3-b1)**p )/3.d0
+#     #tau=(abs(b1-b2)**p *abs(b2-b3)**p *abs(b3-b1)**p )**(1.d0/3.d0)
+#     tau=3/(1/abs(b1-b2)^p +1/abs(b2-b3)^p +1/abs(b3-b1)^p )
+#     #tau = abs(b3-b1)
+#     return tau
+# end
 
 # -----------------------------------------------
 # Limiters in high-to-low order of resolution of shock saves
