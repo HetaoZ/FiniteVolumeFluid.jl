@@ -15,8 +15,8 @@ function reco_by_muscl!(ws::Array{Float64, 2}, axis::Int, Gamma::Float64)
 end
 
 function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float64}, w4::Vector{Float64})
-    rL = @. map(limited_r, w3 - w2, w2 - w1)
-    rR = @. map(limited_r, w4 - w3, w3 - w2)
+    rL = limited_r.(w3 - w2, w2 - w1)
+    rR = limited_r.(w4 - w3, w3 - w2)
 
     wL = @. w2 + 0.5 * (w2 - w1) * limiter(rL, MinmodLimiter())
     wR = @. w3 - 0.5 * (w3 - w2) * limiter(rR, MinmodLimiter())
