@@ -25,3 +25,7 @@ end
 function Base.isnan(v::Vector{<:Real}) 
     return any(isnan.(v))
 end
+
+macro displayln(obj)
+    return :(display($obj);println())
+end

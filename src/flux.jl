@@ -4,6 +4,8 @@ end
 
 @inline function flux!(ws::Array{Float64, 2}, axis::Int, reco_scheme::AbstractRecoScheme, flux_scheme::AbstractFluxScheme, parameters::Dict)
     wL, wR, fL, fR = reconstuct!(ws, axis, parameters["Gamma"], reco_scheme)
+    # println("wL,wR,fL,fR = ",(wL,wR,fL,fR))
+    # error()
     return numerical_flux!(wL, wR, fL, fR, axis, parameters["gamma"], flux_scheme)
 end
 

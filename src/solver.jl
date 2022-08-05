@@ -42,6 +42,12 @@ function update_cells!(f::Fluid, rk::Int, dt::Float64)
                 f.u[:,id] = u
                 f.e[id] = e
                 f.p[id] = p
+
+                # if id == CartesianIndex(3, 3, 3)
+                #     println("w = " ,w)
+                #     println("rho, u, e, p = ", (rho,u,e,p))
+                #     println("f.w = ", f.w[:,id])
+                # end
             # catch
             # if abs(sum(w) - 3.5) > 1e-8
             #     println((id,f.w[:, id],f.wb[:, id],f.rhs[:, id],dt))
@@ -77,8 +83,8 @@ function update_fluxes!(f::Fluid; fluid_markers = (1,))
                     pos_direction = jj > half_stencil_width
                     wall = where_is_block_wall(point, axis, pos_direction, f.blocks)
 
-                    if wall == Missing
-                        ws[:,jj] = copy(f.w[:, add_cartesian(id, axis, jj-half_stencil_width) ])
+                    if wall == "none"
+                        ws[:,jj] = f.w[:, add_cartesian(id, axis, jj-half_stencil_width) ]
                     else
                         # when covered by blocks
                         iL, iR, λ = image_interpolant1d(f.mesh.coords[axis][id[axis] + jj-half_stencil_width], wall, f.mesh.coords[axis])
@@ -87,13 +93,21 @@ function update_fluxes!(f::Fluid; fluid_markers = (1,))
                         ws[:,jj] = image_w
                     end
                 end
+                    
+                    f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.reco_scheme, f.flux_scheme, f.parameters)
+                    f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.reco_scheme, f.flux_scheme, f.parameters)
 
-                f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.reco_scheme, f.flux_scheme, f.parameters)
-                f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.reco_scheme, f.flux_scheme, f.parameters)
-
-                # if isnan(rhs)
-                #     println("id, ws = ", (id, ws))
-                #     error("rhs")
+                # if id == CartesianIndex(3,3,3)
+                #     println()
+                #     println("axis = ", axis)
+                #     display(ws)
+                #     println()
+                #     display(f.flux[axis][:,id])
+                #     println()
+                #     display(f.flux[axis][:,add_cartesian(id, axis, 1)])
+                #     # error()
+                #     println()
+                    
                 # end
             end
         end
@@ -112,6 +126,10 @@ function update_rhs!(f::Fluid)
             end
 
             f.rhs[:,id] = rhs + f.source[:,id]
+
+            # if id == CartesianIndex(3, 3, 3)
+            #     println("rhs = " ,rhs)
+            # end
         end
     end    
 end 
@@ -138,7 +156,7 @@ end
             return pos_direction ? block.point1[axis] : block.point2[axis]
         end
     end
-    return Missing
+    return "none"
 end
 
 function backup_marker!(f::Fluid)

@@ -89,12 +89,12 @@ end
         rho, u, E = w[1], w[2:end-1]/w[1], w[end]/w[1]
         e = E - 0.5 * norm(u)^2
         p = pressure(rho, e, Gamma)
-        
+
         flux[1] = rho * u[axis]
         flux[2:end-1] = rho * u[axis] .* u
         flux[1+axis] += p
         flux[end] = (rho * E + p) * u[axis]
-    elseif w[1] < 1e-14
+    elseif w[1] == 0.
         flux = zeros(Float64, 5)
     else
         println("axis, w = ", (axis, w))

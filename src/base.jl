@@ -97,6 +97,10 @@ end
     return betweeneq(mesh_coords(mesh, id), mesh.point1, mesh.point2)  
 end
 
+@inline function in_computational_domain(mesh::StructuredMesh, point::Vector{Float64})
+    return betweeneq(point, mesh.point1, mesh.point2)  
+end
+
 abstract type AbstractRungeKutta end
 
 struct RungeKutta{N} <: AbstractRungeKutta
@@ -107,9 +111,9 @@ end
 function RungeKutta(order::Int)
     if order == 1
         coeffs = ((1.0, 0.0, 1.0),)
-    # elseif order == 2
-        # coeffs = ((1.0, 0.0, 1.0), 
-        # (0.75, 0.25, 0.25))
+    elseif order == 2
+        coeffs = ((1.0, 0.0, 1.0), 
+        (0.5, 0.5, 0.5))
     elseif order == 3
         coeffs = ((1.0, 0.0, 1.0), 
         (0.75, 0.25, 0.25),
