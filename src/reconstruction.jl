@@ -6,7 +6,7 @@ reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64, reco_scheme::Weno) 
 
 function reco_by_muscl!(ws::Array{Float64, 2}, axis::Int, Gamma::Float64)
 
-    wL, wR = muscl_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4])
+    wL, wR = muscl_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], Gamma)
 
     fL = cons2flux(axis, Gamma, wL)
     fR = cons2flux(axis, Gamma, wR)
@@ -14,7 +14,7 @@ function reco_by_muscl!(ws::Array{Float64, 2}, axis::Int, Gamma::Float64)
     return wL, wR, fL, fR
 end
 
-function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float64}, w4::Vector{Float64})
+function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float64}, w4::Vector{Float64}, Gamma::Float64)
     rL = limited_r.(w3 - w2, w2 - w1)
     rR = limited_r.(w4 - w3, w3 - w2)
 
