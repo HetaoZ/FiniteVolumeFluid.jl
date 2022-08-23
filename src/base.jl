@@ -1,4 +1,4 @@
-struct Block 
+struct Block
     point1::Vector{Float64}
     point2::Vector{Float64}
     function Block(point1, point2)
@@ -10,87 +10,62 @@ function in_block(point::Vector{Float64}, block::Block)
     return betweeneq(point, block.point1, block.point2)
 end
 
-struct StructuredMesh
-    dim::Int # dim = 3
+struct StructuredMesh{dim}
     point1::Vector{Float64}
     point2::Vector{Float64}
     ncells::Vector{Int}
     nbound::Int
-    nx::Int
-    ny::Int
-    nz::Int
-    NX::Int
-    NY::Int
-    NZ::Int
+    n::NTuple{dim,Int}
+    N::NTuple{dim,Int}
     indices::CartesianIndices
     domain_indices::SubArray
     d::Vector{Float64}
-    coords::NTuple{3,Vector{Float64}}
+    coords::NTuple{dim,Vector{Float64}}
 end
 
 function StructuredMesh(dim::Int = 3, point1::Vector{Float64} = [0,0,0], point2::Vector{Float64} = [1,1,1], ncells::Vector{Int} = [1,1,1], nbound::Int = 1)
 
     @assert dim ∈ (1,2,3)
 
-    # 网格永远是三维的，但物理量是 dim 维的。
-    point1 = expand(point1, 3, 0)
-    point2 = expand(point2, 3, 1)
-    ncells = expand(ncells, 3, 1)
-
     d = (point2 - point1) ./ ncells
     @assert d[1] > 0 
 
-    nx, ny, nz = Tuple(ncells)
+    n = Tuple(ncells)
+    N = n .+ 2*nbound
 
-    NX = ncells[1]+2*nbound
-    x = [point1[1] + d[1] * (i-0.5-nbound) for i = 1:NX]
-    
-    if dim > 1
-        NY = ncells[2]+2*nbound
-        y = [point1[2] + d[2] * (i-0.5-nbound) for i = 1:NY]
-    else
-        NY = 1
-        y = [point1[2]]
-    end
-    if dim > 2
-        NZ = ncells[3]+2*nbound
-        z = [point1[3] + d[3] * (i-0.5-nbound) for i = 1:NZ]
-    else
-        NZ = 1
-        z = [point1[3]]
-    end
+    x = ntuple(axis -> [point1[axis] + d[axis] * (i-0.5-nbound) for i = 1:N[axis]], dim)
 
-    indices = CartesianIndices((NX,NY,NZ))
+    indices = CartesianIndices(N)
     if dim == 3
-        domain_indices = view(indices, nbound+1:nbound+nx, nbound+1:nbound+ny, nbound+1:nbound+nz)
+        domain_indices = view(indices, nbound+1:nbound+n[1], nbound+1:nbound+n[2], nbound+1:nbound+n[3])
     elseif dim == 2
-        domain_indices = view(indices, nbound+1:nbound+nx, nbound+1:nbound+ny, 1)
+        domain_indices = view(indices, nbound+1:nbound+n[1], nbound+1:nbound+n[2])
     else
-        domain_indices = view(indices, nbound+1:nbound+nx, 1, 1)
+        domain_indices = view(indices, nbound+1:nbound+n[1])
     end
 
-    return StructuredMesh(dim, point1, point2, ncells, nbound, nx, ny, nz, NX, NY, NZ, indices, domain_indices, d, (x, y, z))
+    return StructuredMesh{dim}(point1, point2, ncells, nbound, n, N, indices, domain_indices, d, x)
 end
 
-@inline function mesh_coords(mesh::StructuredMesh, id::CartesianIndex)
-    return [mesh.coords[i][id[i]] for i = 1:mesh.dim]
+@inline function mesh_coords(mesh::StructuredMesh{dim}, id::CartesianIndex) where dim
+    return [mesh.coords[i][id[i]] for i = 1:dim]
 end
 
-@inline function lower_id(mesh::StructuredMesh, point::Tuple)
-    return CartesianIndex(ntuple(axis -> max(1, ceil(Int, (point[axis] - mesh.coords[axis][1]) / mesh.d[axis])), 3))
+@inline function lower_id(mesh::StructuredMesh{dim}, point::Tuple) where dim
+    return CartesianIndex(ntuple(axis -> max(1, ceil(Int, (point[axis] - mesh.coords[axis][1]) / mesh.d[axis])), dim))
 end
 
-@inline function higher_id(mesh::StructuredMesh, point::Tuple)
+@inline function higher_id(mesh::StructuredMesh{dim}, point::Tuple) where dim
     id = lower_id(mesh, point)
-    for axis = 1:mesh.dim
+    for axis = 1:dim
         add_cartesian(id, axis, 1)
     end
     return id
 end
 
-@inline function region_indices!(mesh::StructuredMesh, point1::Tuple, point2::Tuple; extension::Int = 0)
+@inline function region_indices!(mesh::StructuredMesh{dim}, point1::Tuple, point2::Tuple; extension::Int = 0) where dim
     l_id, h_id = lower_id(mesh, point1), higher_id(mesh, point2)
-    return view(mesh.indices, ntuple(axis -> axis <= mesh.dim ? range(max(mesh.nbound+1,l_id[axis] - extension), min(mesh.ncells[axis]+mesh.nbound, h_id[axis] + extension), step = 1) : 1, length(l_id))...)
+    return view(mesh.indices, ntuple(axis -> range(max(mesh.nbound+1,l_id[axis] - extension), min(mesh.ncells[axis]+mesh.nbound, h_id[axis] + extension), step = 1), dim)...)
 end
 
 @inline function in_computational_domain(mesh::StructuredMesh, id::CartesianIndex)
@@ -190,27 +165,35 @@ end
 const FreeBoundary = FlowBoundary(1.0)
 const ReflBoundary = FlowBoundary(-1.0)
 
-mutable struct Fluid
-    dim::Int
-    mesh::StructuredMesh
-    rho::SharedArray{Float64,3}
-    u::SharedArray{Float64,4}
-    e::SharedArray{Float64,3}
-    p::SharedArray{Float64,3}
-    w::SharedArray{Float64,4}
-    wb::SharedArray{Float64,4}
-    flux::Vector{SharedArray{Float64,4}}
-    rhs::SharedArray{Float64,4}
-    source::SharedArray{Float64,4} 
-    last_marker::SharedArray{Int8,3}
-    marker::SharedArray{Int8,3}
+mutable struct Scheme
+    rungekutta::AbstractRungeKutta
+    reco_scheme::AbstractRecoScheme
+    flux_scheme::AbstractFluxScheme
+end
+
+mutable struct Fluid{dim} 
+    mesh::StructuredMesh{dim}
+    rho::SharedArray{Float64,dim}
+    u::SharedArray
+    e::SharedArray{Float64,dim}
+    p::SharedArray{Float64,dim}
+    w::SharedArray
+    wb::SharedArray
+    flux::NTuple{dim,SharedArray}
+    rhs::SharedArray
+    source::SharedArray
+    # last_marker::SharedArray{Int8,3}
+    marker::SharedArray{Int8,dim}
     boundaries::Vector{NTuple{2,AbstractBoundary}}
     blocks::Vector{Block}
     parameters::Dict
     initial_condition::Function
-    rungekutta::AbstractRungeKutta
-    reco_scheme::AbstractRecoScheme
-    flux_scheme::AbstractFluxScheme
+    scheme::Scheme
+end
+
+function add_along(v::Tuple, axis::Int, n::Int)
+    v1 = ntuple(i -> i==axis ? v[i]+n : v[i], length(v))
+    return v1
 end
 
 function Fluid(; dim::Int = 3, point1 = [0., 0., 0.], point2 = [1., 1., 1.], ncells = [1, 1, 1], nbound::Int = 1, parameters::Dict = Dict(), use_marker::Bool = true)
@@ -233,50 +216,42 @@ function Fluid(; dim::Int = 3, point1 = [0., 0., 0.], point2 = [1., 1., 1.], nce
     ncells = collect(Int, ncells)
 
     mesh = StructuredMesh(dim, point1, point2, ncells, nbound)
-    NX, NY, NZ = mesh.NX, mesh.NY, mesh.NZ
+    N = mesh.N
 
-    fx = SharedArray(zeros(Float64, (2+dim, NX+1, NY, NZ)))
-    fy = SharedArray(zeros(Float64, (1,1,1,1)))
-    fz = SharedArray(zeros(Float64, (1,1,1,1)))
-    if dim > 1
-        fy = SharedArray(zeros(Float64, (2+dim, NX, NY+1, NZ)))
-    end
-    if dim > 2
-        fz = SharedArray(zeros(Float64, (2+dim, NX, NY, NZ+1)))
-    end
+    flux = ntuple(i -> SharedArray(zeros(Float64, (2+dim, add_along(N,i,1)...))), dim)
 
     if use_marker
-        last_marker = SharedArray(ones(Int8, (NX, NY, NZ)))
-        marker = SharedArray(ones(Int8, (NX, NY, NZ)))
+        marker = SharedArray(ones(Int8, N))
     else
-        last_marker = SharedArray(ones(Int8, (1,1,1)))
-        marker = SharedArray(ones(Int8, (1,1,1)))
+        marker = SharedArray(ones(Int8, (1,)))
     end
 
-    return Fluid(dim, mesh,
-    SharedArray(zeros(Float64, (NX, NY, NZ))), 
-    SharedArray(zeros(Float64, (dim, NX, NY, NZ))), 
-    SharedArray(zeros(Float64, (NX, NY, NZ))), 
-    SharedArray(zeros(Float64, (NX, NY, NZ))), 
+    return Fluid{dim}(mesh,
 
-    SharedArray(zeros(Float64, (dim+2, NX, NY, NZ))), # w
-    SharedArray(zeros(Float64, (dim+2, NX, NY, NZ))), # wb
+    SharedArray(zeros(Float64, N)), 
+    SharedArray(zeros(Float64, (dim, N...))), 
+    SharedArray(zeros(Float64, N)), 
+    SharedArray(zeros(Float64, N)), 
 
-    [fx, fy, fz],
+    SharedArray(zeros(Float64, (dim+2, N...))), # w
+    SharedArray(zeros(Float64, (dim+2, N...))), # wb
 
-    SharedArray(zeros(Float64, (dim+2, NX, NY, NZ))), # rhs
-    SharedArray(zeros(Float64, (dim+2, NX, NY, NZ))), # source
+    flux,
 
-    last_marker,
+    SharedArray(zeros(Float64, (dim+2, N...))), # rhs
+    SharedArray(zeros(Float64, (dim+2, N...))), # source
+
     marker,
 
-    [(FreeBoundary, FreeBoundary), (FreeBoundary, FreeBoundary), (FreeBoundary, FreeBoundary),],
+    [(FreeBoundary, FreeBoundary) for i = 1:dim],
     Block[],
     default_para,
+
     (x,t)->(0.,zeros(Float64,dim),0.,0.),
-    RungeKutta(3),
+
+    Scheme(RungeKutta(3),
     Muscl(2),
-    Ausm(0.25, 1.0, 0.75))
+    Ausm(0.25, 1.0, 0.75)))
 end
 
 function Base.show(f::Fluid)
@@ -286,7 +261,7 @@ function Base.show(f::Fluid)
         println("  ",k," : ",f.parameters[k])
     end
     println("# mesh")
-    println("  dimension : ", f.mesh.dim)
+    println("  dimension : ", typeof(f.mesh).var)
     println("  domain : ", Tuple(f.mesh.point1)," -> ", Tuple(f.mesh.point2))
     println("  number of cells : ", length(f.rho))
     println("  size of cells : ", size(f.rho))
@@ -301,9 +276,9 @@ function Base.show(f::Fluid)
         println("  axis 3 : ", f.boundaries[3])
     end
     println("# schemes") 
-    println("  reco scheme : ", f.reco_scheme)
-    println("  flux scheme : ", f.flux_scheme)
-    println("  iter scheme : Runge Kutta of O", f.rungekutta.order)
+    println("  reco scheme : ", f.scheme.reco_scheme)
+    println("  flux scheme : ", f.scheme.flux_scheme)
+    println("  iter scheme : Runge Kutta of O", f.scheme.rungekutta.order)
     println("# physical states")
     println("  rho ∈  ", [minimum(f.rho[f.mesh.domain_indices]), maximum(f.rho[f.mesh.domain_indices])])
     println("  e ∈  ", [minimum(f.e[f.mesh.domain_indices]), maximum(f.e[f.mesh.domain_indices])])

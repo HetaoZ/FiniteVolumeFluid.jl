@@ -1,6 +1,6 @@
 function advance!(f::Fluid, dt::Float64, t::Real)
     backup_w!(f)
-    for rk = 1:f.rungekutta.order
+    for rk = 1:f.scheme.rungekutta.order
         update_fluxes!(f)
         update_rhs!(f)
         update_cells!(f, rk, dt)
@@ -15,12 +15,12 @@ function backup_w!(f::Fluid)
     end     
 end
 
-function time_step!(f::Fluid)
+function time_step!(f::Fluid{dim}) where dim
     smax = 0.
     smax = @sync @distributed (max) for id in f.mesh.domain_indices
         f.marker[id] > 0 ? maximum([smax; sound_speed(f.rho[id], f.p[id], f.parameters["gamma"]) .+ map(abs, f.u[:,id])]) : 0.
     end
-    dt = minimum(f.mesh.d[1:f.dim]) / smax * f.parameters["CFL"]
+    dt = minimum(f.mesh.d) / smax * f.parameters["CFL"]
     if isnan(dt) || dt == Inf
         println("smax = ", smax)
         error("time_step NaN")
@@ -28,12 +28,12 @@ function time_step!(f::Fluid)
     return dt
 end
 
-function update_cells!(f::Fluid, rk::Int, dt::Float64)
+function update_cells!(f::Fluid, rk::Int, dt::Float64; fluid_markers = (1,))
 
-    coeff = f.rungekutta.coeffs[rk]
+    coeff = f.scheme.rungekutta.coeffs[rk]
 
     @sync @distributed for id in f.mesh.domain_indices
-        if f.marker[id] > 0
+        if f.marker[id] in fluid_markers
             # try
                 w = coeff[1] * f.w[:, id] + coeff[2] * f.wb[:, id] + coeff[3] * f.rhs[:, id] * dt                
                 f.w[:, id] = w    
@@ -64,10 +64,9 @@ function update_cells!(f::Fluid, rk::Int, dt::Float64)
     end
 end
 
-function update_fluxes!(f::Fluid; fluid_markers = (1,))
-    dim = f.dim
-    @assert dim ∈ (1,2,3)
-    stencil_width = f.reco_scheme.stencil_width
+function update_fluxes!(f::Fluid{dim}; fluid_markers = (1,)) where dim
+
+    stencil_width = f.scheme.reco_scheme.stencil_width
     half_stencil_width = Int((stencil_width+1)*0.5)
 
     @sync @distributed for id in f.mesh.domain_indices
@@ -77,7 +76,7 @@ function update_fluxes!(f::Fluid; fluid_markers = (1,))
             point = mesh_coords(f.mesh, id)
             ws = zeros(Float64, dim+2, stencil_width)
 
-            for axis = 1:dim
+            for axis in 1:dim
                 for jj in 1:stencil_width
 
                     pos_direction = jj > half_stencil_width
@@ -94,8 +93,8 @@ function update_fluxes!(f::Fluid; fluid_markers = (1,))
                     end
                 end
                     
-                    f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.reco_scheme, f.flux_scheme, f.parameters)
-                    f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.reco_scheme, f.flux_scheme, f.parameters)
+                    f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.scheme.reco_scheme, f.scheme.flux_scheme, f.parameters)
+                    f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.scheme.reco_scheme, f.scheme.flux_scheme, f.parameters)
 
                 # if id == CartesianIndex(3,3,3)
                 #     println()
@@ -114,18 +113,19 @@ function update_fluxes!(f::Fluid; fluid_markers = (1,))
     end    
 end 
 
-function update_rhs!(f::Fluid)
-    dim = f.dim
+function update_rhs!(f::Fluid{dim}; fluid_markers = (1,)) where dim
 
     @sync @distributed for id in f.mesh.domain_indices
-        if f.marker[id] > 0
+        if f.marker[id] in fluid_markers
+            
             rhs = zeros(Float64, dim+2)
 
             for axis = 1:dim
                 rhs += (f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)]) / f.mesh.d[axis]
             end
 
-            f.rhs[:,id] = rhs + f.source[:,id]
+            
+            f.rhs[:,id] = rhs # + f.source[:,id] # source item
 
             # if id == CartesianIndex(3, 3, 3)
             #     println("rhs = " ,rhs)
@@ -157,10 +157,4 @@ end
         end
     end
     return "none"
-end
-
-function backup_marker!(f::Fluid)
-    @sync @distributed for id in f.mesh.indices
-        f.last_marker[id] = f.marker[id]
-    end
 end

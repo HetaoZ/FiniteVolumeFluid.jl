@@ -18,6 +18,10 @@ end
     return CartesianIndex(ntuple(id[k]+n, length(id)))
 end
 
+@inline function change_cartesian(id::CartesianIndex, axis::Int, f::Function)
+    return CartesianIndex(ntuple(k -> k == axis ? f(id[k]) : id[k], length(id)))
+end
+
 @inline function reset_cartesian(id::CartesianIndex, axis::Int, new_index::Int)
     return CartesianIndex(ntuple(k -> k == axis ? new_index : id[k], length(id)))
 end

@@ -1,4 +1,4 @@
-function save_to_vtk(f::Fluid, datanames::T where T<:Tuple, fields::T where T<:Tuple, file_name::String; remove_boundary::Bool = true)
+function save_to_vtk(f::Fluid{dim}, datanames::T where T<:Tuple, fields::T where T<:Tuple, file_name::String; remove_boundary::Bool = true) where dim
 
     vtkfile = create_vtkfile(f, file_name, remove_boundary)
 
@@ -6,9 +6,9 @@ function save_to_vtk(f::Fluid, datanames::T where T<:Tuple, fields::T where T<:T
         for i in eachindex(datanames)
             if fields[i] == :u
                 vtkfile["ux"] = getfield(f, :u)[1,f.mesh.domain_indices]
-                if f.dim > 1
+                if dim > 1
                     vtkfile["uy"] = getfield(f, :u)[2,f.mesh.domain_indices]
-                    if f.dim > 2
+                    if dim > 2
                         vtkfile["uz"] = getfield(f, :u)[3,f.mesh.domain_indices]
                     end
                 end
@@ -19,11 +19,11 @@ function save_to_vtk(f::Fluid, datanames::T where T<:Tuple, fields::T where T<:T
     else
         for i in eachindex(datanames)
             if fields[i] == :u
-                vtkfile["ux"] = getfield(f, :u)[1,:,:,:]
-                if f.dim > 1
-                    vtkfile["uy"] = getfield(f, :u)[2,:,:,:]
-                    if f.dim > 2
-                        vtkfile["uz"] = getfield(f, :u)[3,:,:,:]
+                vtkfile["ux"] = getfield(f, :u)[1,f.mesh.indices]
+                if dim > 1
+                    vtkfile["uy"] = getfield(f, :u)[2,f.mesh.indices]
+                    if dim > 2
+                        vtkfile["uz"] = getfield(f, :u)[3,f.mesh.indices]
                     end
                 end
             else
@@ -35,12 +35,12 @@ function save_to_vtk(f::Fluid, datanames::T where T<:Tuple, fields::T where T<:T
     outfiles = vtk_save(vtkfile)
 end
 
-function create_vtkfile(f::Fluid, file_name::String, remove_boundary::Bool)
+function create_vtkfile(f::Fluid{dim}, file_name::String, remove_boundary::Bool) where dim
     if remove_boundary
-        if f.dim == 1
+        if dim == 1
             x = f.mesh.coords[1][f.mesh.nbound+1:end-f.mesh.nbound]
             file = vtk_grid(file_name, x)
-        elseif f.dim == 2
+        elseif dim == 2
             x = f.mesh.coords[1][f.mesh.nbound+1:end-f.mesh.nbound]
             y = f.mesh.coords[2][f.mesh.nbound+1:end-f.mesh.nbound]
             file = vtk_grid(file_name, x, y)
@@ -51,21 +51,21 @@ function create_vtkfile(f::Fluid, file_name::String, remove_boundary::Bool)
             file = vtk_grid(file_name, x, y, z)
         end
     else
-        file = vtk_grid(file_name, f.mesh.coords[1:f.dim]...)
+        file = vtk_grid(file_name, f.mesh.coords[1:dim]...)
     end
 
     return file
 end
 
-function save_mesh(f::Fluid, file_name::String; remove_boundary::Bool = true)
+function save_mesh(f::Fluid{dim}, file_name::String; remove_boundary::Bool = true) where dim
     if remove_boundary 
-        for k in 1:f.dim
+        for k in 1:dim
             open(file_name*"_"*string(k)*".txt","w") do file
                 writedlm(file, f.mesh.coords[k][f.mesh.nbound+1:end-f.mesh.nbound])
             end
         end 
     else   
-        for k in 1:f.dim
+        for k in 1:dim
             open(file_name*"_"*string(k)*".txt","w") do file
                 writedlm(file, f.mesh.coords[k])
             end

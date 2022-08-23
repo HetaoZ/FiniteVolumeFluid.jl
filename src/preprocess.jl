@@ -12,6 +12,8 @@ function initialize_fluid!(f::Fluid, t::Real)
         if typeof(prim) <: Tuple && length(prim) == 4
             f.rho[id], f.u[:,id], f.e[id], f.p[id] = prim
             f.w[:,id] = prim2cons(Float64(prim[1]), Float64.(prim[2]), Float64(prim[3]))
+        else
+            error("Incorrect primary variables from initial_condition")
         end
     end
 end
@@ -43,13 +45,13 @@ function set_boundaries(f::Fluid, boundary_types::NTuple{2,AbstractBoundary}...)
 end
 
 function set_scheme(f::Fluid, reco_scheme::AbstractRecoScheme)
-    f.reco_scheme = reco_scheme
+    f.scheme.reco_scheme = reco_scheme
 end
 
 function set_scheme(f::Fluid, flux_scheme::AbstractFluxScheme)
-    f.flux_scheme = flux_scheme
+    f.scheme.flux_scheme = flux_scheme
 end
 
 function set_scheme(f::Fluid, rungekutta::AbstractRungeKutta)
-    f.rungekutta = rungekutta
+    f.scheme.rungekutta = rungekutta
 end
