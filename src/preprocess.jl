@@ -12,8 +12,8 @@ function initialize_fluid!(f::Fluid, t::Real)
         if typeof(prim) <: Tuple && length(prim) == 4
             f.rho[id], f.u[:,id], f.e[id], f.p[id] = prim
             f.w[:,id] = prim2cons(Float64(prim[1]), Float64.(prim[2]), Float64(prim[3]))
-        else
-            error("Incorrect primary variables from initial_condition")
+        # else
+        #     error("Incorrect primary variables from initial_condition")
         end
     end
 end

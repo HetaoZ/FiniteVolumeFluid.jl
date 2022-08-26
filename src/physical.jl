@@ -84,18 +84,19 @@ end
 end
 
 @inline function cons2flux(axis::Int, Gamma::Float64, w::Vector{Float64})
-    flux = zeros(Float64, length(w))
+    
     if w[1] > 0.
         rho, u, E = w[1], w[2:end-1]/w[1], w[end]/w[1]
         e = E - 0.5 * norm(u)^2
         p = pressure(rho, e, Gamma)
 
+        flux = zeros(Float64, length(w))
         flux[1] = rho * u[axis]
         flux[2:end-1] = rho * u[axis] .* u
         flux[1+axis] += p
         flux[end] = (rho * E + p) * u[axis]
     elseif w[1] == 0.
-        flux = zeros(Float64, 5)
+        flux = zeros(Float64, length(w))
     else
         println("axis, w = ", (axis, w))
         error("")
