@@ -76,6 +76,10 @@ end
     return betweeneq(point, mesh.point1, mesh.point2)  
 end
 
+@inline function in_computational_domain(mesh::StructuredMesh, point::Tuple)
+    return betweeneq(collect(point), mesh.point1, mesh.point2)  
+end
+
 abstract type AbstractRungeKutta end
 
 struct RungeKutta{N} <: AbstractRungeKutta
