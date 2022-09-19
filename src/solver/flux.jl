@@ -1,66 +1,41 @@
-function Muscl(order::Int = 2)
-    if order == 2
-        stencil_width = 3
-    else
-        error("undef order")
-    end
-    return Muscl(order, stencil_width)
-end
 
-function Weno(order::Int = 5)
-    if order == 5
-        stencil_width = 5
-    else
-        error("undef order")
-    end
-    return Weno(order, stencil_width, "JS", 
-    1.e-10,
-    ([1/3 -7/6 11/6],
-    [-1/6 5/6 1/3],
-    [1/3 5/6 -1/6],
-    [11/6 -7/6 1/3]),
-    (0.1, 0.6, 0.3),
-    2  # recommended p = r
-    )
-end
-
-function Ausm()
-    return Ausm(0.25, 0.75, 1.0)
-end
 
 # --------------------------------------------------
 # flux functions
 
-@inline function dflux!(ws::Array{Float64, 2}, axis::Int, reco_scheme::AbstractRecoScheme, flux_scheme::AbstractFluxScheme, parameters::Dict)
-    return flux!(ws[:,1:end-1], axis, reco_scheme, flux_scheme, parameters) - flux!(ws[:,2:end], axis, reco_scheme, flux_scheme, parameters)
+
+
+@inline function flux!(ws::Array{Float64, 2}, axis::Int, solver::FVSolver, material::AbstractMaterial)
+    wL, wR, fL, fR = reconstuct!(ws, axis, material, solver.reconstruction)
+    return numerical_flux!(wL, wR, fL, fR, axis, material, solver.flux)
 end
 
-@inline function flux!(ws::Array{Float64, 2}, axis::Int, reco_scheme::AbstractRecoScheme, flux_scheme::AbstractFluxScheme, parameters::Dict)
-    wL, wR, fL, fR = reconstuct!(ws, axis, parameters["Gamma"], reco_scheme)
-    # println("wL,wR,fL,fR = ",(wL,wR,fL,fR))
-    # error()
-    return numerical_flux!(wL, wR, fL, fR, axis, parameters["gamma"], flux_scheme)
+@inline function dflux!(ws::Array{Float64, 2}, axis::Int, solver::AbstractSolver, material::AbstractMaterial)
+    return flux!(ws[:,1:end-1], axis, solver, material) - flux!(ws[:,2:end], axis, solver, material)
 end
 
-@inline function numerical_flux!(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, axis::Int, gamma::Float64, flux_scheme::LaxFriedrichs)
-    return get_lf_flux!(wL, wR, fL, fR, gamma, axis)
+@inline function numerical_flux!(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, ::Int, material::AbstractMaterial, ::LaxFriedrichs)
+    return get_lf_flux!(wL, wR, fL, fR, material)
 end
 
-@inline function numerical_flux!(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, axis::Int, gamma::Float64, flux_scheme::Ausm)
-    return get_ausm_flux!(wL, wR, fL, fR, gamma, axis, flux_scheme)
+@inline function numerical_flux!(wL::Array{Float64,1}, wR::Array{Float64,1}, ::Array{Float64,1}, ::Array{Float64,1}, axis::Int, material::AbstractMaterial, ausm::Ausm)
+    return get_ausm_flux!(axis, wL, wR, ausm, material)
 end
 
 ## _______________________________________________________
 
-@inline function get_lf_flux!(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, gamma::Float64, axis::Int)
-    return 0.5 * ( fL + fR - max(norm(speed(wL, axis)) + sound_speed(wL, gamma), norm(speed(wR, axis)) + sound_speed(wR, gamma)) * ( wR - wL ) )
+"Lax-Friedrichs flux scheme"
+@inline function get_lf_flux!(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, idealgas::IdealGas)
+    return 0.5 * ( fL + fR - max(norm(speed(wL)) + sound_speed(wL, idealgas), norm(speed(wR)) + sound_speed(wR, idealgas)) * ( wR - wL ) )
 end
 
-function get_ausm_flux!(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, gamma::Float64, axis::Int, ausm::Ausm)
-    len = length(fL)
+"AUMS^+-up flux scheme"
+function get_ausm_flux!(axis::Int, wL::Vector{Float64}, wR::Vector{Float64}, ausm::Ausm, idealgas::IdealGas)
+
+    len = length(wL)
     
-    rhoL, uL, EL, pL, aL = get_flux_vars(wL, gamma)
-    rhoR, uR, ER, pR, aR = get_flux_vars(wR, gamma)
+    rhoL, uL, EL, pL, aL = get_flux_vars(wL, idealgas)
+    rhoR, uR, ER, pR, aR = get_flux_vars(wR, idealgas)
 
     vel_L, vel_R = uL[axis], uR[axis]    
 
@@ -114,7 +89,7 @@ function get_ausm_flux!(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Flo
     return f
 end
 
-function get_flux_vars(w::Vector{Float64}, gamma)
+function get_flux_vars(w::Vector{Float64}, idealgas::IdealGas)
     if w[1] < 1e-14
         rho, u, E, p, a = 0., zeros(Float64, length(w)-2), 0., 0., 0.
     else
@@ -122,11 +97,11 @@ function get_flux_vars(w::Vector{Float64}, gamma)
         u = w[2:end-1] ./ rho
         E = w[end] / rho
         e = E - 0.5 * norm(u)^2
-        p = pressure(rho, e, gamma - 1.0)
+        p = pressure(rho, e, idealgas)
         if p < 0
-            a = sound_speed(rho, 1e-14, gamma)
+            a = sound_speed(rho, 1e-14, idealgas)
         else
-            a = sound_speed(rho, p, gamma)
+            a = sound_speed(rho, p, idealgas)
         end
     end
     return rho, u, E, p, a

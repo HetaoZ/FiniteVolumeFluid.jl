@@ -1,16 +1,11 @@
-
-function set_bounds!(f::Fluid{dim}, boundaries::NTuple{dim,NTuple{2,AbstractBoundary}}) where dim
-    f.boundaries = boundaries
-    update_bounds!(f)
-end
-
 function update_bounds!(f::Fluid{dim}) where dim
-    @assert typeof(f.mesh) == StructuredGrid{dim}
 
-    nbound = f.mesh.nbound
-    ncells = f.mesh.ncells
+    @assert typeof(f.grid) == StructuredGrid{dim}
+    
+    nbound = f.grid.nbound
+    nel = f.grid.nel
 
-    @sync @distributed for id in f.mesh.indices
+    @sync @distributed for id in f.grid.indices
         for axis in 1:dim
             
             if id[axis] < nbound + 1
@@ -30,8 +25,8 @@ function update_bounds!(f::Fluid{dim}) where dim
                 f.p[id] = p
                 f.w[:, id] = w
             end
-            if id[axis] > ncells[axis] + nbound
-                image_id = change_cartesian(id, axis, h->2*(ncells[axis]+nbound)+1-h)
+            if id[axis] > nel[axis] + nbound
+                image_id = change_cartesian(id, axis, h->2*(nel[axis]+nbound)+1-h)
                 marker = f.marker[image_id]
                 rho = f.rho[image_id]
                 u = f.u[:, image_id]
@@ -52,8 +47,3 @@ function update_bounds!(f::Fluid{dim}) where dim
     end 
 end
 
-# ----------------------------------
-# block boundary 
-function in_block(point::Vector{Float64}, block::Block)
-    return betweeneq(point, block.point1, block.point2)
-end

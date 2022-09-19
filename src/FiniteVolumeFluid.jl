@@ -10,33 +10,32 @@ using WriteVTK
 using SharedArrays
 
 
-
 export 
-    Fluid,
-    FreeBoundary,
-    ReflBoundary,
+    RectangularGrid,
+    IdealGas,
+    
+    RungeKutta,
     Muscl,
     Weno,
     LaxFriedrichs,
     Ausm,
-    RungeKutta
+    FVSolver,
+    
+    FreeBoundary,
+    ReflBoundary,
+    Fluid
+   
 export 
-    set_initial_condition, 
-    set_parameters,
-    set_boundaries,
-    set_scheme,
-    insert_block,
-    time_step!,
-    advance!,
-    save_mesh,
-    save_to_vtk,
-    mesh_coords,
-    behind_shock
+    time_step,
+    solve!,
+    save_grid,
+    save,
+    behind_shock,
+    pressure2e
 
 
 include("base.jl")
 
-include("utils/physical.jl")
 include("utils/utils.jl")
 include("utils/preprocess.jl")
 include("utils/postprocess_vtk.jl")
@@ -49,5 +48,6 @@ include("solver/solver.jl")
 include("solver/flux.jl")
 include("solver/reconstruction.jl")
 include("solver/boundary.jl")
+include("solver/local_fitting.jl")
 
 end

@@ -1,30 +1,67 @@
-reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64,            ::Muscl) = reco_by_muscl!(ws, axis, Gamma)
-reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64, reco_scheme::Weno) = reco_by_weno!(ws, axis, Gamma, reco_scheme)
+
+function Muscl(order::Int = 2, limiter = MinmodLimiter())
+    if order == 2
+        stencil_width = 3
+    else
+        error("undef order")
+    end
+    return Muscl(order, stencil_width, limiter)
+end
+
+function Weno(order::Int = 5)
+    if order == 5
+        stencil_width = 5
+    else
+        error("undef order")
+    end
+    return Weno(order, stencil_width, "JS", 
+    1.e-10,
+    ([1/3 -7/6 11/6],
+    [-1/6 5/6 1/3],
+    [1/3 5/6 -1/6],
+    [11/6 -7/6 1/3]),
+    (0.1, 0.6, 0.3),
+    2  # recommended p = r
+    )
+end
+
+function Ausm()
+    return Ausm(0.25, 0.75, 1.0)
+end
+
+function getnbound(reco::AbstractReconstruction)
+    return ceil(Int,reco.stencil_width/2)
+end
+
+# --------------------------------------------------------
+
+reconstuct!(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, muscl::Muscl) = reco_by_muscl!(ws, axis, material, muscl)
+reconstuct!(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, weno::Weno) = reco_by_weno!(ws, axis, material, weno)
 
 # --------------------------------------------------------------------------------
 # MUSCL scheme
 
-function reco_by_muscl!(ws::Array{Float64, 2}, axis::Int, Gamma::Float64)
+function reco_by_muscl!(ws::Array{Float64, 2}, axis::Int, material::AbstractMaterial, muscl::Muscl)
 
-    wL, wR = muscl_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], Gamma)
+    wL, wR = muscl_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], material, muscl)
 
-    fL = cons2flux(axis, Gamma, wL)
-    fR = cons2flux(axis, Gamma, wR)
+    fL = cons2flux(axis, wL, material)
+    fR = cons2flux(axis, wR, material)
 
     return wL, wR, fL, fR
 end
 
-function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float64}, w4::Vector{Float64}, Gamma::Float64)
+function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float64}, w4::Vector{Float64}, idealgas::IdealGas, muscl::Muscl)
     rL = limited_r.(w3 - w2, w2 - w1)
     rR = limited_r.(w4 - w3, w3 - w2)
 
-    wL = @. w2 + 0.5 * (w2 - w1) * limiter(rL, MinmodLimiter())
-    wR = @. w3 - 0.5 * (w3 - w2) * limiter(rR, MinmodLimiter())
+    wL = @. w2 + 0.5 * (w2 - w1) * limiter(rL, muscl.limiter)
+    wR = @. w3 - 0.5 * (w3 - w2) * limiter(rR, muscl.limiter)
 
-    if wL[1] < 1e-14 || pressure(wL, Gamma) < 0
+    if wL[1] < 1e-14 || pressure(wL, idealgas) < 0
         wL = w2
     end
-    if wR[1] < 1e-14 || pressure(wR, Gamma) < 0
+    if wR[1] < 1e-14 || pressure(wR, idealgas) < 0
         wR = w3
     end
     return wL, wR
@@ -41,10 +78,10 @@ end
 # ---------------------------------------------------------------------
 # WENO-JS scheme
 
-function reco_by_weno!(ws::Array{Float64, 2}, axis::Int, Gamma::Float64, weno::Weno)
+function reco_by_weno!(ws::Array{Float64, 2}, axis::Int, idealgas::IdealGas, weno::Weno)
     wL, wR = weno_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], ws[:,5], ws[:,6], weno)
-    fL = cons2flux(axis, Gamma, wL)
-    fR = cons2flux(axis, Gamma, wR)
+    fL = cons2flux(axis, wL, idealgas)
+    fR = cons2flux(axis, wR, idealgas)
     return wL, wR, fL, fR
 end
 
@@ -66,13 +103,13 @@ function weno_getbeta(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Fl
     )
 end
 
-function weno_weightedsum(weight::NTuple{3,Float64}, a1::Vector{Float64}, a2::Vector{Float64}, a3::Vector{Float64}, f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64)
+function weno_weightedsum(weight, a1, a2, a3, f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64)
     return dot(weight, (a1[1]*f1 + a1[2]*f2 + a1[3]*f3, a2[1]*f2 + a2[2]*f3 + a2[3]*f4, a3[1]*f3 + a3[2]*f4 + a3[3]*f5))
 end
 
-function weno_getf(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64, C::NTuple{3,Float64}, a::NTuple{3,Vector{Float64}}, eps::Float64, p::Int)
+function weno_getf(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64, C::NTuple{3,Float64}, a::NTuple{3,Array{Float64}}, eps::Float64, p::Int)
     β = weno_getbeta(f1,f2,f3,f4,f5)
-    α = map(j -> C[j]/(eps + β[j])^p, β)
+    α = [C[j]/(eps + β[j])^p for j in eachindex(β)]
     s = sum(α)
     weight = α ./ s
     return weno_weightedsum(weight, a[1], a[2], a[3], f1, f2, f3, f4, f5)
@@ -90,19 +127,11 @@ end
 # -----------------------------------------------
 # Limiters in high-to-low order of resolution of shock saves
 # -----------------------------------------------
-abstract type AbstractLimiter end
-
-struct SuperbeeLimiter <: AbstractLimiter end
-struct VanLeerMeanLimiter <: AbstractLimiter end
-struct VanLeerLimiter <: AbstractLimiter end
-struct VanAlbabaLimiter <: AbstractLimiter end
-struct MinmodLimiter <: AbstractLimiter end
-
-limiter(r::Float64, l::SuperbeeLimiter) = superbee_limiter(r)
-limiter(r::Float64, l::VanLeerMeanLimiter) = van_leer_mean_limiter(r)
-limiter(r::Float64, l::VanLeerLimiter) = van_leer_limiter(r)
-limiter(r::Float64, l::VanAlbabaLimiter) = van_albaba_limiter(r)
-limiter(r::Float64, l::MinmodLimiter) = minmod_limiter(r)
+limiter(r::Float64, ::SuperbeeLimiter) = superbee_limiter(r)
+limiter(r::Float64, ::VanLeerMeanLimiter) = van_leer_mean_limiter(r)
+limiter(r::Float64, ::VanLeerLimiter) = van_leer_limiter(r)
+limiter(r::Float64, ::VanAlbabaLimiter) = van_albaba_limiter(r)
+limiter(r::Float64, ::MinmodLimiter) = minmod_limiter(r)
 
 """
 superbee limiter

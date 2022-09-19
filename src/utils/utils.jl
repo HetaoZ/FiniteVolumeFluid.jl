@@ -2,8 +2,12 @@
     return [i>length(v) ? default_value : v[i] for i in 1:new_length]
 end
 
-@inline function betweeneq(a::Vector{T}, lo::Vector{T}, hi::Vector{T}) where T <: Real
+@inline function betweeneq(a, lo, hi) 
     return all(lo .≤ a .≤ hi)
+end
+
+@inline function between(a, lo, hi) 
+    return all(lo .< a .< hi)
 end
 
 @inline function add_cartesian(id::CartesianIndex, axis::Int, n::Int)

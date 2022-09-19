@@ -1,5 +1,5 @@
 
-function RungeKutta(order::Int)
+function RungeKutta(order::Int = 3)
     if order == 1
         coeffs = ((1.0, 0.0, 1.0),)
     elseif order == 2
@@ -15,13 +15,38 @@ function RungeKutta(order::Int)
     return RungeKutta{order}(order, coeffs)
 end
 
+function FVSolver(rungekutta::AbstractRungeKutta, reconstruction::AbstractReconstruction, flux::AbstractFlux; CFL = 0.5)
+    return FVSolver(CFL, rungekutta, reconstruction, flux)
+end
+
 # ------------------------------------------------------------------------------
 # solve
 
-function advance!(f::Fluid, dt::Float64, t::Real)
+function time_step(f::Fluid{dim}) where dim
+    smax = 0.
+    smax = @sync @distributed (max) for id in f.grid.domain_indices
+        f.marker[id] > 0 ? maximum([smax; sound_speed(f.rho[id], f.p[id], f.material) .+ map(abs, f.u[:,id])])  : 0.
+        # if f.marker[id] > 0 
+        #     s = maximum([smax; sound_speed(f.rho[id], f.p[id], f.material) .+ map(abs, f.u[:,id])]) 
+        # else
+        #     s = 0.
+        # end
+        # s
+    end
+
+    dt = minimum(f.grid.d) / smax * f.solver.CFL
+
+    if isnan(dt) || dt == Inf
+        println("smax = ", smax)
+        error("time_step NaN")
+    end
+    return dt
+end
+
+function solve!(f::Fluid, dt, t)
     backup_w!(f)
-    for rk = 1:f.scheme.rungekutta.order
-        update_fluxes!(f)
+    for rk = 1:f.solver.rungekutta.order
+        update_fluxes!(f, t)
         update_rhs!(f)
         update_cells!(f, rk, dt)
         update_bounds!(f)
@@ -30,126 +55,89 @@ function advance!(f::Fluid, dt::Float64, t::Real)
 end
 
 function backup_w!(f::Fluid)
-    @sync @distributed for id in eachindex(f.w)
-        f.wb[id] = f.w[id]
+    @sync @distributed for id in f.grid.domain_indices
+        f.wb[:,id] = f.w[:,id]
     end     
 end
 
-function time_step!(f::Fluid{dim}) where dim
-    smax = 0.
-    smax = @sync @distributed (max) for id in f.mesh.domain_indices
-        f.marker[id] > 0 ? maximum([smax; sound_speed(f.rho[id], f.p[id], f.parameters["gamma"]) .+ map(abs, f.u[:,id])]) : 0.
-    end
-    dt = minimum(f.mesh.d) / smax * f.parameters["CFL"]
-    if isnan(dt) || dt == Inf
-        println("smax = ", smax)
-        error("time_step NaN")
-    end
-    return dt
-end
+function update_cells!(f::Fluid, rk::Int, dt; fluid_markers = (1,))
 
-function update_cells!(f::Fluid, rk::Int, dt::Float64; fluid_markers = (1,))
+    coeff = f.solver.rungekutta.coeffs[rk]
 
-    coeff = f.scheme.rungekutta.coeffs[rk]
-
-    @sync @distributed for id in f.mesh.domain_indices
+    @sync @distributed for id in f.grid.domain_indices
         if f.marker[id] in fluid_markers
-            # try
-                w = coeff[1] * f.w[:, id] + coeff[2] * f.wb[:, id] + coeff[3] * f.rhs[:, id] * dt                
+
+                w = coeff[1] * f.w[:, id] + coeff[2] * f.wb[:, id] + coeff[3] * f.rhs[:, id] * dt   
+
                 f.w[:, id] = w    
-                rho, u, e, p = cons2prim(w, f.parameters["Gamma"])     
+                rho, u, e, p = cons2prim(w, f.material)
                 f.rho[id] = rho
                 f.u[:,id] = u
                 f.e[id] = e
                 f.p[id] = p
 
-                # if id == CartesianIndex(3, 3, 3)
-                #     println("w = " ,w)
-                #     println("rho, u, e, p = ", (rho,u,e,p))
-                #     println("f.w = ", f.w[:,id])
-                # end
-            # catch
-            # if abs(sum(w) - 3.5) > 1e-8
-            #     println((id,f.w[:, id],f.wb[:, id],f.rhs[:, id],dt))
-            #     for axis = 1:3
-            #         println("axis = ", axis)
-            #         println(f.flux[axis][:,id])
-            #         println(f.flux[axis][:,add_cartesian(id, axis, 1)])
-            #         println()
-            #     end
-            #     error()
-            # end
-            # end
         end
     end
-end
-
-function update_fluxes!(f::Fluid{dim}; fluid_markers = (1,)) where dim
-
-    stencil_width = f.scheme.reco_scheme.stencil_width
-    total_stencil_width = stencil_width + 2
-    half_stencil_width = ceil(Int, stencil_width/2)
-    
-    @sync @distributed for id in f.mesh.domain_indices
-        if f.marker[id] in fluid_markers
-
-            ws = zeros(Float64, dim+2, total_stencil_width)
-            for axis in 1:dim
-                for jj in 1:total_stencil_width
-                    ws[:,jj] = f.w[:, add_cartesian(id, axis, jj-half_stencil_width-1) ]
-                end
-                    
-                f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.scheme.reco_scheme, f.scheme.flux_scheme, f.parameters)
-
-                f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.scheme.reco_scheme, f.scheme.flux_scheme, f.parameters)
-
-            end
-        end
-    end    
 end 
 
 function update_rhs!(f::Fluid{dim}; fluid_markers = (1,)) where dim
 
-    @sync @distributed for id in f.mesh.domain_indices
+    @sync @distributed for id in f.grid.domain_indices
         if f.marker[id] in fluid_markers
             
             rhs = zeros(Float64, dim+2)
 
             for axis = 1:dim
-                rhs += (f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)]) / f.mesh.d[axis]
+                rhs += (f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)]) / f.grid.d[axis]
             end
-
             
             f.rhs[:,id] = rhs # + f.source[:,id] # source item
 
-            # if id == CartesianIndex(3, 3, 3)
-            #     println("rhs = " ,rhs)
-            # end
         end
     end    
 end 
 
-@inline function image_interpolant1d(ghost_x::Float64, wall::Float64, mesh_x::Vector{Float64})
-    return neighbors(image1d(ghost_x, wall), mesh_x)
-end
+function update_fluxes!(f::Fluid{dim}, t::Real; fluid_markers = (1,)) where dim
 
-@inline function image1d(ghost_x::Float64, wall::Float64)
-    return 2.0 * wall - ghost_x
-end
+    stencil_width = f.solver.reconstruction.stencil_width
+    total_stencil_width = stencil_width + 2
+    half_stencil_width = ceil(Int, stencil_width/2)
+    
+    @sync @distributed for id in f.grid.domain_indices
+        if f.marker[id] in fluid_markers
 
-@inline function neighbors(x::Float64, mesh_x::Vector{Float64})
-    iL = ceil(Int, (x - mesh_x[1])/(mesh_x[2] - mesh_x[1]))
-    return iL, iL+1, (x-mesh_x[iL])/(mesh_x[iR] - mesh_x[iL])
-end
+            ws = zeros(Float64, dim+2, total_stencil_width)
 
-"""
-要求任意两个block的交集为空。
-"""
-@inline function where_is_block_wall(x::Vector{Float64}, axis::Int, pos_direction::Bool, blocks::Vector{Block})
-    for block in blocks
-        if in_block(x, block)
-            return pos_direction ? block.point1[axis] : block.point2[axis]
+            for axis in 1:dim
+
+                for jj in 1:total_stencil_width
+
+                    w_id = add_cartesian(id, axis, jj-half_stencil_width-1)
+                    point = getcoordinates(f.grid, w_id)
+
+                    # check wall function
+                    wall_vars = f.wall(point, t)
+                    if wall_vars[1]
+                        image_point = wall_vars[2]
+                        image_w = local_fitting!(f, image_point)
+                        n = normalize(image_point - point)
+                        ws[:,jj] = image2ghost(image_w, n)
+
+                        # println(point, "  --  ", image_point)
+                        # println(n)
+                        # println(image_w)
+                        # println(ws[:,jj])
+                        # error()
+                    else                    
+                        ws[:,jj] = f.w[:, w_id]
+                    end
+                end
+                    
+                f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.solver, f.material)
+
+                f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.solver, f.material)
+
+            end
         end
-    end
-    return "none"
+    end    
 end

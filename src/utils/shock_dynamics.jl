@@ -1,6 +1,7 @@
-function behind_shock(ρ1, u1, p1, Mach, γ, shock_direction)
+function behind_shock(ρ1, u1, p1, Mach, idealgas::IdealGas, shock_direction)
     @assert Mach >= 1
-    c1 = sound_speed(ρ1, p1, γ)
+    γ = idealgas.γ
+    c1 = sound_speed(ρ1, p1, idealgas)
     us = Mach * c1 * shock_direction
     U1 = u1 - us
     M1 = U1 / c1

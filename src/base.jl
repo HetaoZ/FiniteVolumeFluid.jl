@@ -1,6 +1,3 @@
-
-
-
 # ---------------------------------------------
 # grid
 
@@ -17,8 +14,11 @@ struct StructuredGrid{dim}
     indices::CartesianIndices
     domain_indices
     nbound::Int
-    N::NTuple{dim,Int}
-    d::NTuple{dim,Float64}
+    start
+    stop
+    nel
+    N
+    d
     x::NTuple{dim,Vector{Float64}}
 end
 
@@ -34,6 +34,16 @@ struct IdealGas <: AbstractMaterial
     λ # = 1/(γ-1)
 end
 
+struct ViscousGas <: AbstractMaterial
+    γ # γ(air) = 1.4
+    Γ # = γ - 1
+    λ # = 1/(γ-1)
+    U₀
+    L₀
+    μ
+    Re
+end
+
 # ---------------------------------------------------------
 # solver
 
@@ -42,14 +52,22 @@ abstract type AbstractRungeKutta end
 struct RungeKutta{N} <: AbstractRungeKutta
     order::Int
     coeffs::NTuple{N, NTuple{3,Float64}}
-    CFL
 end
+
+abstract type AbstractLimiter end
+
+struct SuperbeeLimiter <: AbstractLimiter end
+struct VanLeerMeanLimiter <: AbstractLimiter end
+struct VanLeerLimiter <: AbstractLimiter end
+struct VanAlbabaLimiter <: AbstractLimiter end
+struct MinmodLimiter <: AbstractLimiter end
 
 abstract type AbstractReconstruction end
 
 struct Muscl <: AbstractReconstruction
     order::Int
     stencil_width::Int
+    limiter::AbstractLimiter
 end
 
 struct Weno <: AbstractReconstruction
@@ -75,7 +93,8 @@ end
 abstract type AbstractSolver end
 
 "有限体积法"
-mutable struct FVSolver <: AbstractSolver
+struct FVSolver <: AbstractSolver
+    CFL::Real
     rungekutta::AbstractRungeKutta
     reconstruction::AbstractReconstruction
     flux::AbstractFlux
@@ -100,7 +119,7 @@ mutable struct Fluid{dim}
     solver::AbstractSolver
     
     initial_condition::Function # 初值条件
-    wall_condition::Function  # 允许自定义任意形状的 wall
+    wall::Function  # 允许自定义任意形状的 wall
     boundaries::Vector{NTuple{2,AbstractBoundary}} # 最外侧边界
 
     rho::SharedArray
