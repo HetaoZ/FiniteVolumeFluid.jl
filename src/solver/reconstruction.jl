@@ -1,4 +1,4 @@
-reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64, reco_scheme::Muscl) = reco_by_muscl!(ws, axis, Gamma)
+reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64,            ::Muscl) = reco_by_muscl!(ws, axis, Gamma)
 reconstuct!(ws::Array{Float64,2}, axis::Int, Gamma::Float64, reco_scheme::Weno) = reco_by_weno!(ws, axis, Gamma, reco_scheme)
 
 # --------------------------------------------------------------------------------

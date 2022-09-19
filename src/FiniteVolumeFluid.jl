@@ -35,15 +35,19 @@ export
 
 
 include("base.jl")
-include("utils.jl")
-include("physical.jl")
-include("preprocess.jl")
-include("boundary.jl")
-include("solver.jl")
-include("flux.jl")
-include("reconstruction.jl")
-include("postprocess_vtk.jl")
-include("shock_dynamics.jl")
 
-###
+include("utils/physical.jl")
+include("utils/utils.jl")
+include("utils/preprocess.jl")
+include("utils/postprocess_vtk.jl")
+include("utils/shock_dynamics.jl")
+
+include("grid/grid.jl")
+include("material/material.jl")
+
+include("solver/solver.jl")
+include("solver/flux.jl")
+include("solver/reconstruction.jl")
+include("solver/boundary.jl")
+
 end

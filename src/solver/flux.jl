@@ -1,3 +1,36 @@
+function Muscl(order::Int = 2)
+    if order == 2
+        stencil_width = 3
+    else
+        error("undef order")
+    end
+    return Muscl(order, stencil_width)
+end
+
+function Weno(order::Int = 5)
+    if order == 5
+        stencil_width = 5
+    else
+        error("undef order")
+    end
+    return Weno(order, stencil_width, "JS", 
+    1.e-10,
+    ([1/3 -7/6 11/6],
+    [-1/6 5/6 1/3],
+    [1/3 5/6 -1/6],
+    [11/6 -7/6 1/3]),
+    (0.1, 0.6, 0.3),
+    2  # recommended p = r
+    )
+end
+
+function Ausm()
+    return Ausm(0.25, 0.75, 1.0)
+end
+
+# --------------------------------------------------
+# flux functions
+
 @inline function dflux!(ws::Array{Float64, 2}, axis::Int, reco_scheme::AbstractRecoScheme, flux_scheme::AbstractFluxScheme, parameters::Dict)
     return flux!(ws[:,1:end-1], axis, reco_scheme, flux_scheme, parameters) - flux!(ws[:,2:end], axis, reco_scheme, flux_scheme, parameters)
 end

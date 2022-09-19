@@ -5,7 +5,7 @@ function set_bounds!(f::Fluid{dim}, boundaries::NTuple{dim,NTuple{2,AbstractBoun
 end
 
 function update_bounds!(f::Fluid{dim}) where dim
-    @assert typeof(f.mesh) == StructuredMesh{dim}
+    @assert typeof(f.mesh) == StructuredGrid{dim}
 
     nbound = f.mesh.nbound
     ncells = f.mesh.ncells
@@ -50,4 +50,10 @@ function update_bounds!(f::Fluid{dim}) where dim
         
         end
     end 
+end
+
+# ----------------------------------
+# block boundary 
+function in_block(point::Vector{Float64}, block::Block)
+    return betweeneq(point, block.point1, block.point2)
 end

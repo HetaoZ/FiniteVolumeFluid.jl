@@ -1,3 +1,23 @@
+
+function RungeKutta(order::Int)
+    if order == 1
+        coeffs = ((1.0, 0.0, 1.0),)
+    elseif order == 2
+        coeffs = ((1.0, 0.0, 1.0), 
+        (0.5, 0.5, 0.5))
+    elseif order == 3
+        coeffs = ((1.0, 0.0, 1.0), 
+        (0.75, 0.25, 0.25),
+        (1/3, 2/3, 2/3))
+    else
+        error("undef order")
+    end
+    return RungeKutta{order}(order, coeffs)
+end
+
+# ------------------------------------------------------------------------------
+# solve
+
 function advance!(f::Fluid, dt::Float64, t::Real)
     backup_w!(f)
     for rk = 1:f.scheme.rungekutta.order
@@ -67,47 +87,22 @@ end
 function update_fluxes!(f::Fluid{dim}; fluid_markers = (1,)) where dim
 
     stencil_width = f.scheme.reco_scheme.stencil_width
-    half_stencil_width = Int((stencil_width+1)*0.5)
-
+    total_stencil_width = stencil_width + 2
+    half_stencil_width = ceil(Int, stencil_width/2)
+    
     @sync @distributed for id in f.mesh.domain_indices
-        
         if f.marker[id] in fluid_markers
 
-            point = mesh_coords(f.mesh, id)
-            ws = zeros(Float64, dim+2, stencil_width)
-
+            ws = zeros(Float64, dim+2, total_stencil_width)
             for axis in 1:dim
-                for jj in 1:stencil_width
-
-                    pos_direction = jj > half_stencil_width
-                    wall = where_is_block_wall(point, axis, pos_direction, f.blocks)
-
-                    if wall == "none"
-                        ws[:,jj] = f.w[:, add_cartesian(id, axis, jj-half_stencil_width) ]
-                    else
-                        # when covered by blocks
-                        iL, iR, λ = image_interpolant1d(f.mesh.coords[axis][id[axis] + jj-half_stencil_width], wall, f.mesh.coords[axis])
-                        image_w = (1.0 - λ) * f.w[:, reset_cartesian(id, axis, iL)] + λ * f.w[:, reset_cartesian(id, axis, iR)]
-                        image_w[1+axis] *= -1.0
-                        ws[:,jj] = image_w
-                    end
+                for jj in 1:total_stencil_width
+                    ws[:,jj] = f.w[:, add_cartesian(id, axis, jj-half_stencil_width-1) ]
                 end
                     
-                    f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.scheme.reco_scheme, f.scheme.flux_scheme, f.parameters)
-                    f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.scheme.reco_scheme, f.scheme.flux_scheme, f.parameters)
+                f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.scheme.reco_scheme, f.scheme.flux_scheme, f.parameters)
 
-                # if id == CartesianIndex(3,3,3)
-                #     println()
-                #     println("axis = ", axis)
-                #     display(ws)
-                #     println()
-                #     display(f.flux[axis][:,id])
-                #     println()
-                #     display(f.flux[axis][:,add_cartesian(id, axis, 1)])
-                #     # error()
-                #     println()
-                    
-                # end
+                f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.scheme.reco_scheme, f.scheme.flux_scheme, f.parameters)
+
             end
         end
     end    
