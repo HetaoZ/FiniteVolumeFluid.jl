@@ -8,21 +8,30 @@ function Muscl(order::Int = 2, limiter = MinmodLimiter())
     return Muscl(order, stencil_width, limiter)
 end
 
+# -------
+# WENO5-JS
+
+const WENO5_JS_eps = 1.e-10
+const WENO5_JS_a = ([1/3 -7/6 11/6],
+[-1/6 5/6 1/3],
+[1/3 5/6 -1/6],
+[11/6 -7/6 1/3])
+const WENO5_JS_C = (0.1, 0.6, 0.3)
+const WENO5_JS_reC = (0.3, 0.6, 0.1)
+const WENO5_JS_p = 2
+
 function Weno(order::Int = 5)
     if order == 5
         stencil_width = 5
+        return Weno(order, stencil_width, "JS", 
+        WENO5_JS_eps,
+        WENO5_JS_a,
+        WENO5_JS_C,
+        WENO5_JS_p  # recommended p = r
+        )
     else
         error("undef order")
     end
-    return Weno(order, stencil_width, "JS", 
-    1.e-10,
-    ([1/3 -7/6 11/6],
-    [-1/6 5/6 1/3],
-    [1/3 5/6 -1/6],
-    [11/6 -7/6 1/3]),
-    (0.1, 0.6, 0.3),
-    2  # recommended p = r
-    )
 end
 
 function Ausm()
@@ -96,34 +105,13 @@ function weno_interp(FM3::Vector{Float64},FM2::Vector{Float64},FM1::Vector{Float
     # WENO sample points: (FM3 - FM2 - FM1 - pipe - FP1 - FP2 - FP3)
     # Jiang-Shu's WENO Scheme
     n = length(FM3)
-
-    println("-- weno")
-    C = weno.C
-    re_C = reverse(weno.C)
-    a = weno.a[2:4]
-    eps = weno.eps
-    p = weno.p
-    @time for i = 1:100
-        FL = zeros(Float64, n)
-        FR = zeros(Float64, n)
-        for k = 1:n
-            FL[k] = weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k],   C, a, eps, p)
-            FR[k] = weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], re_C, a, eps, p)
-        end
+    FL = zeros(Float64, n)
+    FR = zeros(Float64, n)
+    for k = 1:n
+        FL[k] = weno_getf_L(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k])
+        FR[k] = weno_getf_R(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k])
     end
 
-    @time  for i = 1:100
-        FL = [weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k],    C, a, eps, p) for k = 1:n]
-        FR = [weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], re_C, a, eps, p) for k = 1:n]
-    end
-
-    @time  for i = 1:100
-        FL = [weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k], weno.C, weno.a[1:3], weno.eps, weno.p) for k = 1:n]
-        FR = [weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], reverse(weno.C), weno.a[2:4], weno.eps, weno.p) for k = 1:n]
-    end
-
-    FL = [weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k], weno.C, weno.a[1:3], weno.eps, weno.p) for k = 1:n]
-    FR = [weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], reverse(weno.C), weno.a[2:4], weno.eps, weno.p) for k = 1:n]
     return FL, FR
 end
 
@@ -139,12 +127,20 @@ function weno_weightedsum(weight, a1, a2, a3, f1::Float64, f2::Float64, f3::Floa
     return dot(weight, (a1[1]*f1 + a1[2]*f2 + a1[3]*f3, a2[1]*f2 + a2[2]*f3 + a2[3]*f4, a3[1]*f3 + a3[2]*f4 + a3[3]*f5))
 end
 
-function weno_getf(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64, C::NTuple{3,Float64}, a::NTuple{3,Array{Float64}}, eps::Float64, p::Int)
-    β = weno_getbeta(f1,f2,f3,f4,f5)
-    α = [C[j]/(eps + β[j])^p for j in eachindex(β)]
+function weno_getf_L(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64)
+    β = weno_getbeta(f1, f2, f3, f4, f5)
+    α = [WENO5_JS_C[j]/(WENO5_JS_eps + β[j])^WENO5_JS_p for j in eachindex(β)]
     s = sum(α)
     weight = α / s
-    return weno_weightedsum(weight, a[1], a[2], a[3], f1, f2, f3, f4, f5)
+    return weno_weightedsum(weight, WENO5_JS_a[1], WENO5_JS_a[2], WENO5_JS_a[3], f1, f2, f3, f4, f5)
+end
+
+function weno_getf_R(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64)
+    β = weno_getbeta(f1, f2, f3, f4, f5)
+    α = [WENO5_JS_reC[j]/(WENO5_JS_eps + β[j])^WENO5_JS_p for j in eachindex(β)]
+    s = sum(α)
+    weight = α / s
+    return weno_weightedsum(weight, WENO5_JS_a[2], WENO5_JS_a[3], WENO5_JS_a[4], f1, f2, f3, f4, f5)
 end
 
 # "WENO-Z factor"
