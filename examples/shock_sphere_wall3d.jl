@@ -29,16 +29,16 @@ end
 
 # "定义壁面和镜像反射点"
 @everywhere function wall(P, t)
-    # center = [1, 0.5, 0.5]
-    # r = 0.2
-    # in_wall = norm(P - center) < r
-    # if in_wall
-    #     refl_func = (x) -> 2*(center + r*normalize(x-center)) - x
-    #     return in_wall, refl_func(P)
-    # else
-    #     return in_wall, 0
-    # end
-    return false
+    center = [1, 0.5, 0.5]
+    r = 0.2
+    in_wall = norm(P - center) < r
+    if in_wall
+        refl_func = (x) -> 2*(center + r*normalize(x-center)) - x
+        return in_wall, refl_func(P)
+    else
+        return in_wall, 0
+    end
+    # return false
 end
 
 @everywhere function new_fluid(initial_condition, wall)

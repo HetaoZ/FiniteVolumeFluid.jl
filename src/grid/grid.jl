@@ -29,6 +29,10 @@ end
     return [grid.x[i][id[i]] for i = 1:dim]
 end
 
+@inline function getcoordinates_in_region(grid::StructuredGrid{dim}, rindices) where dim
+    return [grid.x[i][id[i]] for i in 1:dim, id in rindices]
+end
+
 @inline function lower_id(grid::StructuredGrid{dim}, point) where dim
     return CartesianIndex(ntuple(axis -> max(1, ceil(Int, (point[axis] - grid.x[axis][1]) / grid.d[axis])), dim))
 end

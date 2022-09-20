@@ -1,21 +1,20 @@
 const FIT_RADIUS = 2.5
 
 function local_fitting!(f::Fluid{dim}, fitting_point) where dim
-
     point = collect(fitting_point)
     r = FIT_RADIUS * maximum(f.grid.d)
     start = point .- r
     stop  = point .+ r
-
-    sampling_indices = filter(id -> f.marker[id] in (1,), region_indices!(f.grid, Tuple(start), Tuple(stop)))
-
-    points = reshape(vcat(map(id -> getcoordinates(f.grid, id), sampling_indices)...), (dim, length(sampling_indices)))
-
+    rindices = region_indices!(f.grid, Tuple(start), Tuple(stop))
+    sampling_indices = rindices[map(m->m ∈ (1,), f.marker[rindices])]
+    points = getcoordinates_in_region(f.grid, sampling_indices)
     A = mls_basis(ntuple(i->points[i,:], dim)...)
-
-    samples = copy(f.w[:, sampling_indices])'
+    samples = f.w[:, sampling_indices]'
     
-    X = pinv(A) * samples
+    println("-- local_fitting: 9")
+    @time pinv_A = pinv(A)
+
+    X = pinv_A * samples
     fitting_value = vec(mls_basis(Tuple(point)...) * X)
 
     return fitting_value
