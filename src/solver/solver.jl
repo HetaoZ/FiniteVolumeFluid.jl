@@ -119,9 +119,8 @@ function update_fluxes!(f::Fluid{dim}, t::Real; fluid_markers = (1,)) where dim
                     wall_vars = f.wall(point, t)
                     if wall_vars[1]
                         image_point = wall_vars[2]
-                        # println("-- update_fluxes: 1.1")
-                        # @time 
-                        image_w = local_fitting!(f, image_point)
+                        println("-- update_fluxes: 1.1")
+                        @time image_w = local_fitting!(f, image_point)
                         n = normalize(image_point - point)
                         ws[:,jj] = image2ghost(image_w, n)
                     else                    
