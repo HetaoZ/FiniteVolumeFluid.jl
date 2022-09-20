@@ -1,5 +1,8 @@
-const FIT_RADIUS = 0.75
+const FIT_RADIUS = 1.5
 
+"""
+`WeightedMean`: RBF-based weighted mean method
+"""
 function local_fitting!(f::Fluid{dim}, fitting_point) where dim
     point = collect(fitting_point)
     r = FIT_RADIUS * maximum(f.grid.d)
@@ -10,18 +13,45 @@ function local_fitting!(f::Fluid{dim}, fitting_point) where dim
     sampling_indices = rindices[map(m->m ∈ (1,), f.marker[rindices])]
     points = getcoordinates_in_region(f.grid, sampling_indices)
     
-    # ----------------
-    # 性能瓶颈
-    A = mls_basis(ntuple(i->points[i,:], dim)...)
-    pinv_A = pinv(A)
-    # ----------------
+    weights = scatter_linear_interpolant(point, points)
 
-    samples = f.w[:, sampling_indices]'
-    X = pinv_A * samples
-    fitting_value = vec(mls_basis(Tuple(point)...) * X)
+    samples = f.w[:, sampling_indices]
+    fitting_value = samples * weights
 
     return fitting_value
 end
+
+"""
+在一组散点上，根据反距离函数计算插值系数。
+"""
+function scatter_linear_interpolant(point::Vector{Float64}, x)
+    inverse_distances = [1/norm(point - x[:,j]) for j in axes(x,2)]
+    return inverse_distances / sum(inverse_distances)
+end
+
+# "Moving least square 大约比 WeightedMean 慢 300%"
+# function local_fitting!(f::Fluid{dim}, fitting_point) where dim
+#     point = collect(fitting_point)
+#     r = FIT_RADIUS * maximum(f.grid.d)
+#     start = point .- r
+#     stop  = point .+ r
+
+#     rindices = region_indices!(f.grid, Tuple(start), Tuple(stop))
+#     sampling_indices = rindices[map(m->m ∈ (1,), f.marker[rindices])]
+#     points = getcoordinates_in_region(f.grid, sampling_indices)
+    
+#     # ----------------
+#     # 性能瓶颈
+#     A = mls_basis(ntuple(i->points[i,:], dim)...)
+#     pinv_A = pinv(A)
+#     # ----------------
+
+#     samples = f.w[:, sampling_indices]'
+#     X = pinv_A * samples
+#     fitting_value = vec(mls_basis(Tuple(point)...) * X)
+
+#     return fitting_value
+# end
 
 @inline function image2ghost(w::Vector{Float64}, n::Vector{Float64})
     wg = copy(w)
