@@ -50,7 +50,7 @@ end
     idealgas = IdealGas(1.4)
 
     # solver
-    solver = FVSolver(RungeKutta(3), Muscl(), LaxFriedrichs(); CFL = 0.5)
+    solver = FVSolver(RungeKutta(3), Weno(), LaxFriedrichs(); CFL = 0.5)
 
     # 外边界
     boundaries = [(FreeBoundary, FreeBoundary), 

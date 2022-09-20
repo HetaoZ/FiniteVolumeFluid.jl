@@ -7,13 +7,8 @@ function compute_flux(ws::Array{Float64, 2}, axis::Int, solver::FVSolver, materi
     
     wL, wR, fL, fR = reconstuct(ws, axis, material, solver.reconstruction)
 
-    num_flux = numerical_flux(wL, wR, fL, fR, axis, material, solver.flux)
-    return num_flux
+    return numerical_flux(wL, wR, fL, fR, axis, material, solver.flux)
 end
-
-# @inline function dflux!(ws::Array{Float64, 2}, axis::Int, solver::AbstractSolver, material::AbstractMaterial)
-#     return flux!(ws[:,1:end-1], axis, solver, material) - flux!(ws[:,2:end], axis, solver, material)
-# end
 
 function numerical_flux(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, ::Int, material::AbstractMaterial, ::LaxFriedrichs)
     return get_lf_flux(wL, wR, fL, fR, material)

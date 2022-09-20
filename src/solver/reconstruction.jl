@@ -96,9 +96,35 @@ function weno_interp(FM3::Vector{Float64},FM2::Vector{Float64},FM1::Vector{Float
     # WENO sample points: (FM3 - FM2 - FM1 - pipe - FP1 - FP2 - FP3)
     # Jiang-Shu's WENO Scheme
     n = length(FM3)
+
+    println("-- weno")
+    C = weno.C
+    re_C = reverse(weno.C)
+    a = weno.a[2:4]
+    eps = weno.eps
+    p = weno.p
+    @time for i = 1:100
+        FL = zeros(Float64, n)
+        FR = zeros(Float64, n)
+        for k = 1:n
+            FL[k] = weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k],   C, a, eps, p)
+            FR[k] = weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], re_C, a, eps, p)
+        end
+    end
+
+    @time  for i = 1:100
+        FL = [weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k],    C, a, eps, p) for k = 1:n]
+        FR = [weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], re_C, a, eps, p) for k = 1:n]
+    end
+
+    @time  for i = 1:100
+        FL = [weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k], weno.C, weno.a[1:3], weno.eps, weno.p) for k = 1:n]
+        FR = [weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], reverse(weno.C), weno.a[2:4], weno.eps, weno.p) for k = 1:n]
+    end
+
     FL = [weno_getf(FM3[k], FM2[k], FM1[k], FP1[k], FP2[k], weno.C, weno.a[1:3], weno.eps, weno.p) for k = 1:n]
     FR = [weno_getf(FM2[k], FM1[k], FP1[k], FP2[k], FP3[k], reverse(weno.C), weno.a[2:4], weno.eps, weno.p) for k = 1:n]
-    return FL,FR
+    return FL, FR
 end
 
 function weno_getbeta(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float64)
@@ -117,7 +143,7 @@ function weno_getf(f1::Float64, f2::Float64, f3::Float64, f4::Float64, f5::Float
     β = weno_getbeta(f1,f2,f3,f4,f5)
     α = [C[j]/(eps + β[j])^p for j in eachindex(β)]
     s = sum(α)
-    weight = α ./ s
+    weight = α / s
     return weno_weightedsum(weight, a[1], a[2], a[3], f1, f2, f3, f4, f5)
 end
 
@@ -133,11 +159,11 @@ end
 # -----------------------------------------------
 # Limiters in high-to-low order of resolution of shock saves
 # -----------------------------------------------
-limiter(r::Float64, ::SuperbeeLimiter) = superbee_limiter(r)
-limiter(r::Float64, ::VanLeerMeanLimiter) = van_leer_mean_limiter(r)
-limiter(r::Float64, ::VanLeerLimiter) = van_leer_limiter(r)
-limiter(r::Float64, ::VanAlbabaLimiter) = van_albaba_limiter(r)
-limiter(r::Float64, ::MinmodLimiter) = minmod_limiter(r)
+# limiter(r::Float64, ::SuperbeeLimiter) = superbee_limiter(r)
+# limiter(r::Float64, ::VanLeerMeanLimiter) = van_leer_mean_limiter(r)
+# limiter(r::Float64, ::VanLeerLimiter) = van_leer_limiter(r)
+# limiter(r::Float64, ::VanAlbabaLimiter) = van_albaba_limiter(r)
+# limiter(r::Float64, ::MinmodLimiter) = minmod_limiter(r)
 
 """
 superbee limiter
@@ -186,16 +212,16 @@ minmod limiter
     end
 end
 
-"""
-minmod function
-"""
-@inline function minmod(a::Float64, b::Float64)
-    if abs(a) < abs(b)
-        c = a
-    elseif abs(a) > abs(b)
-        c = b
-    else
-        c = 0.
-    end
-    return c
-end
+# """
+# minmod function
+# """
+# @inline function minmod(a::Float64, b::Float64)
+#     if abs(a) < abs(b)
+#         c = a
+#     elseif abs(a) > abs(b)
+#         c = b
+#     else
+#         c = 0.
+#     end
+#     return c
+# end
