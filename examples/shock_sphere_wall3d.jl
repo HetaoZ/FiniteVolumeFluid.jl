@@ -29,27 +29,28 @@ end
 
 # "定义壁面和镜像反射点"
 @everywhere function wall(P, t)
-    center = [1, 0.5, 0.5]
-    r = 0.25
-    in_wall = norm(P - center) < r
-    if in_wall
-        refl_func = (x) -> 2*(center + r*normalize(x-center)) - x
-        return in_wall, refl_func(P)
-    else
-        return in_wall, 0
-    end
+    # center = [1, 0.5, 0.5]
+    # r = 0.2
+    # in_wall = norm(P - center) < r
+    # if in_wall
+    #     refl_func = (x) -> 2*(center + r*normalize(x-center)) - x
+    #     return in_wall, refl_func(P)
+    # else
+    #     return in_wall, 0
+    # end
+    return false
 end
 
 @everywhere function new_fluid(initial_condition, wall)
 
     # grid
-    grid = RectangularGrid{3}((0,0,0), (2,1,1), 2 .* (20, 10, 10))
+    grid = RectangularGrid{3}((0,0,0), (4,1,1), 5 .* (40, 10, 10))
 
     # material
     idealgas = IdealGas(1.4)
 
     # solver
-    solver = FVSolver(RungeKutta(3), Weno(), Ausm(); CFL = 0.5)
+    solver = FVSolver(RungeKutta(3), Muscl(), LaxFriedrichs(); CFL = 0.5)
 
     # 外边界
     boundaries = [(FreeBoundary, FreeBoundary), 
@@ -73,10 +74,12 @@ save(f, path*"fluid_"*string(N+FRAME))
 println("FRAME frame                      Date         Δt          t ")
 @printf "%5i %5i   %s  %.3e  %.3e\n" FRAME frame Dates.now() 0 time
 
-while frame < 200 && time < 1
+while frame < 2 && time < 1
     
     global frame, time, FRAME
     
+    # println("-- while 0 --")
+    # @time     
     dt = time_step(f)
     solve!(f, dt, time)
 

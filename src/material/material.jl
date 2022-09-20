@@ -42,7 +42,7 @@ end
 
 sound_speed(rho::Float64, p::Float64, idealgas::IdealGas) = sqrt(temperature(rho, p, idealgas))
 
-sound_speed(w::Vector{Float64}, idealgas::IdealGas) = sqrt(temperature(w[1], pressure(w, idealgas.Γ), idealgas.γ))
+sound_speed(w::Vector{Float64}, idealgas::IdealGas) = sqrt(temperature(w[1], pressure(w, idealgas), idealgas))
 
 @inline function speed(w::Vector{Float64})
     dim = length(w) - 2
@@ -94,6 +94,7 @@ end
         flux[2:end-1] = rho * u[axis] .* u
         flux[1+axis] += p
         flux[end] = (rho * E + p) * u[axis]
+
     elseif w[1] == 0.
         flux = zeros(Float64, length(w))
     else

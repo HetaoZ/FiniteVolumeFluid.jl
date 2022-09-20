@@ -3,34 +3,36 @@
 # --------------------------------------------------
 # flux functions
 
+function compute_flux(ws::Array{Float64, 2}, axis::Int, solver::FVSolver, material::AbstractMaterial)
+    
+    wL, wR, fL, fR = reconstuct(ws, axis, material, solver.reconstruction)
 
-
-@inline function flux!(ws::Array{Float64, 2}, axis::Int, solver::FVSolver, material::AbstractMaterial)
-    wL, wR, fL, fR = reconstuct!(ws, axis, material, solver.reconstruction)
-    return numerical_flux!(wL, wR, fL, fR, axis, material, solver.flux)
+    num_flux = numerical_flux(wL, wR, fL, fR, axis, material, solver.flux)
+    return num_flux
 end
 
-@inline function dflux!(ws::Array{Float64, 2}, axis::Int, solver::AbstractSolver, material::AbstractMaterial)
-    return flux!(ws[:,1:end-1], axis, solver, material) - flux!(ws[:,2:end], axis, solver, material)
+# @inline function dflux!(ws::Array{Float64, 2}, axis::Int, solver::AbstractSolver, material::AbstractMaterial)
+#     return flux!(ws[:,1:end-1], axis, solver, material) - flux!(ws[:,2:end], axis, solver, material)
+# end
+
+function numerical_flux(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, ::Int, material::AbstractMaterial, ::LaxFriedrichs)
+    return get_lf_flux(wL, wR, fL, fR, material)
 end
 
-@inline function numerical_flux!(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, ::Int, material::AbstractMaterial, ::LaxFriedrichs)
-    return get_lf_flux!(wL, wR, fL, fR, material)
-end
-
-@inline function numerical_flux!(wL::Array{Float64,1}, wR::Array{Float64,1}, ::Array{Float64,1}, ::Array{Float64,1}, axis::Int, material::AbstractMaterial, ausm::Ausm)
-    return get_ausm_flux!(axis, wL, wR, ausm, material)
+function numerical_flux(wL::Array{Float64,1}, wR::Array{Float64,1}, ::Array{Float64,1}, ::Array{Float64,1}, axis::Int, material::AbstractMaterial, ausm::Ausm)
+    return get_ausm_flux(axis, wL, wR, ausm, material)
 end
 
 ## _______________________________________________________
 
 "Lax-Friedrichs flux scheme"
-@inline function get_lf_flux!(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, idealgas::IdealGas)
+function get_lf_flux(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, idealgas::IdealGas)
+
     return 0.5 * ( fL + fR - max(norm(speed(wL)) + sound_speed(wL, idealgas), norm(speed(wR)) + sound_speed(wR, idealgas)) * ( wR - wL ) )
 end
 
 "AUMS^+-up flux scheme"
-function get_ausm_flux!(axis::Int, wL::Vector{Float64}, wR::Vector{Float64}, ausm::Ausm, idealgas::IdealGas)
+function get_ausm_flux(axis::Int, wL::Vector{Float64}, wR::Vector{Float64}, ausm::Ausm, idealgas::IdealGas)
 
     len = length(wL)
     

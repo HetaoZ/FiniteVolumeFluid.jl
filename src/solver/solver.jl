@@ -44,12 +44,24 @@ function time_step(f::Fluid{dim}) where dim
 end
 
 function solve!(f::Fluid, dt, t)
+    # println("-- solve 1 --")
+    # @time 
     backup_w!(f)
+    
     for rk = 1:f.solver.rungekutta.order
-        update_fluxes!(f, t)
+        # println("-- solve 2 --")
+        @time update_fluxes!(f, t)
+        # println("-- solve 3 --")
+        # @time 
         update_rhs!(f)
+        # println("-- solve 4 --")
+        # @time 
         update_cells!(f, rk, dt)
+        # println("-- solve 5 --")
+        # @time 
         update_bounds!(f)
+        # println("-- solve 6 --")
+        # @time 
         initialize_fluid!(f, t) # Reinitialize the fluid for "everlasting sources" when t > 0
     end
 end
@@ -113,29 +125,23 @@ function update_fluxes!(f::Fluid{dim}, t::Real; fluid_markers = (1,)) where dim
                 for jj in 1:total_stencil_width
 
                     w_id = add_cartesian(id, axis, jj-half_stencil_width-1)
-                    point = getcoordinates(f.grid, w_id)
-
+                    
                     # check wall function
+                    point = getcoordinates(f.grid, w_id)
                     wall_vars = f.wall(point, t)
                     if wall_vars[1]
                         image_point = wall_vars[2]
                         image_w = local_fitting!(f, image_point)
                         n = normalize(image_point - point)
                         ws[:,jj] = image2ghost(image_w, n)
-
-                        # println(point, "  --  ", image_point)
-                        # println(n)
-                        # println(image_w)
-                        # println(ws[:,jj])
-                        # error()
                     else                    
                         ws[:,jj] = f.w[:, w_id]
                     end
                 end
-                    
-                f.flux[axis][:,id] = flux!(ws[:,1:end-1], axis, f.solver, f.material)
+            
+                f.flux[axis][:,id] = compute_flux(ws[:,1:end-1], axis, f.solver, f.material)
 
-                f.flux[axis][:,add_cartesian(id, axis, 1)] = flux!(ws[:,2:end], axis, f.solver, f.material)
+                f.flux[axis][:,add_cartesian(id, axis, 1)] = compute_flux(ws[:,2:end], axis, f.solver, f.material)
 
             end
         end

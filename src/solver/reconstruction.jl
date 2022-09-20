@@ -35,15 +35,15 @@ end
 
 # --------------------------------------------------------
 
-reconstuct!(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, muscl::Muscl) = reco_by_muscl!(ws, axis, material, muscl)
-reconstuct!(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, weno::Weno) = reco_by_weno!(ws, axis, material, weno)
+reconstuct(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, muscl::Muscl) = reco_by_muscl(ws, axis, material, muscl)
+reconstuct(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, weno::Weno) = reco_by_weno(ws, axis, material, weno)
 
 # --------------------------------------------------------------------------------
 # MUSCL scheme
 
-function reco_by_muscl!(ws::Array{Float64, 2}, axis::Int, material::AbstractMaterial, muscl::Muscl)
+function reco_by_muscl(ws::Array{Float64, 2}, axis::Int, material::AbstractMaterial, muscl::Muscl)
 
-    wL, wR = muscl_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], material, muscl)
+    wL, wR = muscl_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], material, muscl.limiter)
 
     fL = cons2flux(axis, wL, material)
     fR = cons2flux(axis, wR, material)
@@ -51,12 +51,18 @@ function reco_by_muscl!(ws::Array{Float64, 2}, axis::Int, material::AbstractMate
     return wL, wR, fL, fR
 end
 
-function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float64}, w4::Vector{Float64}, idealgas::IdealGas, muscl::Muscl)
-    rL = limited_r.(w3 - w2, w2 - w1)
-    rR = limited_r.(w4 - w3, w3 - w2)
+function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float64}, w4::Vector{Float64}, idealgas::IdealGas, ::MinmodLimiter)
+    n = length(w1)
+    wL = zeros(Float64, n)
+    wR = zeros(Float64, n)
 
-    wL = @. w2 + 0.5 * (w2 - w1) * limiter(rL, muscl.limiter)
-    wR = @. w3 - 0.5 * (w3 - w2) * limiter(rR, muscl.limiter)
+    for i = 1:n
+        rL = limited_r(w3[i] - w2[i], w2[i] - w1[i])
+        rR = limited_r(w4[i] - w3[i], w3[i] - w2[i])
+    
+        wL[i] =  w2[i] + 0.5 * (w2[i] - w1[i]) * minmod_limiter(rL)
+        wR[i] =  w3[i] - 0.5 * (w3[i] - w2[i]) * minmod_limiter(rR)
+    end
 
     if wL[1] < 1e-14 || pressure(wL, idealgas) < 0
         wL = w2
@@ -67,7 +73,7 @@ function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float
     return wL, wR
 end
 
-@inline function limited_r(d1::Float64, d2::Float64)
+function limited_r(d1::Float64, d2::Float64)
     if d2 == 0.
         return 0.
     else
@@ -78,7 +84,7 @@ end
 # ---------------------------------------------------------------------
 # WENO-JS scheme
 
-function reco_by_weno!(ws::Array{Float64, 2}, axis::Int, idealgas::IdealGas, weno::Weno)
+function reco_by_weno(ws::Array{Float64, 2}, axis::Int, idealgas::IdealGas, weno::Weno)
     wL, wR = weno_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], ws[:,5], ws[:,6], weno)
     fL = cons2flux(axis, wL, idealgas)
     fR = cons2flux(axis, wR, idealgas)
