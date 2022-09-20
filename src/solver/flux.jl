@@ -1,24 +1,25 @@
-
+function Ausm()
+    return Ausm(AUSM_Kp, AUSM_Ku, AUSM_sigma)
+end
 
 # --------------------------------------------------
 # flux functions
 
 function compute_flux(ws::Array{Float64, 2}, axis::Int, solver::FVSolver, material::AbstractMaterial)
-    
-    wL, wR, fL, fR = reconstuct(ws, axis, material, solver.reconstruction)
-
-    return numerical_flux(wL, wR, fL, fR, axis, material, solver.flux)
+    return numerical_flux(reconstuct(ws, axis, material, solver.reconstruction, solver.flux)..., axis, material)
 end
 
-function numerical_flux(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, ::Int, material::AbstractMaterial, ::LaxFriedrichs)
+"Lax-Friedrichs flux"
+function numerical_flux(wL::Array{Float64,1}, wR::Array{Float64,1}, fL::Array{Float64,1}, fR::Array{Float64,1}, ::Int, material::AbstractMaterial)
     return get_lf_flux(wL, wR, fL, fR, material)
 end
 
-function numerical_flux(wL::Array{Float64,1}, wR::Array{Float64,1}, ::Array{Float64,1}, ::Array{Float64,1}, axis::Int, material::AbstractMaterial, ausm::Ausm)
-    return get_ausm_flux(axis, wL, wR, ausm, material)
+"AUSM^+-up flux"
+function numerical_flux(wL::Array{Float64,1}, wR::Array{Float64,1}, axis::Int, material::AbstractMaterial)
+    return get_ausm_flux(axis, wL, wR, material)
 end
 
-## _______________________________________________________
+# _______________________________________________________
 
 "Lax-Friedrichs flux scheme"
 function get_lf_flux(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float64}, fR::Vector{Float64}, idealgas::IdealGas)
@@ -26,8 +27,16 @@ function get_lf_flux(wL::Vector{Float64}, wR::Vector{Float64}, fL::Vector{Float6
     return 0.5 * ( fL + fR - max(norm(speed(wL)) + sound_speed(wL, idealgas), norm(speed(wR)) + sound_speed(wR, idealgas)) * ( wR - wL ) )
 end
 
+
+# ------------------------------
+# AUSM^+-up
+
+const AUSM_Kp = 0.25
+const AUSM_Ku = 0.75
+const AUSM_sigma = 1.0
+
 "AUMS^+-up flux scheme"
-function get_ausm_flux(axis::Int, wL::Vector{Float64}, wR::Vector{Float64}, ausm::Ausm, idealgas::IdealGas)
+function get_ausm_flux(axis::Int, wL::Vector{Float64}, wR::Vector{Float64}, idealgas::IdealGas)
 
     len = length(wL)
     
@@ -46,23 +55,22 @@ function get_ausm_flux(axis::Int, wL::Vector{Float64}, wR::Vector{Float64}, ausm
     
     Ma_bar_sq = (vel_L^2 + vel_R^2) / (2.0*a_int^2)
 
-    fa = 1.0
+    # fa = 1.0 # fa = constant
 
-    MMa_p4_L = get_MMa_4(Ma_L, fa,  1.0)
-    MMa_m4_R = get_MMa_4(Ma_R, fa, -1.0)
-
+    MMa_p4_L = get_MMa_4_L(Ma_L)
+    MMa_m4_R = get_MMa_4_R(Ma_R)
     rho_int = (rhoL + rhoR) * 0.5
 
-    if rho_int < 1e-14 || fa < 1e-14
+    if rho_int < 1e-14
         Ma_int = 0.0
     else
-        Ma_int = MMa_p4_L + MMa_m4_R - ausm.Kp/fa*max(1.0 - ausm.sigma*Ma_bar_sq, 0.0)*(pR - pL)/(rho_int*a_int^2)
+        Ma_int = MMa_p4_L + MMa_m4_R - AUSM_Kp*max(1.0 - AUSM_sigma*Ma_bar_sq, 0.0)*(pR - pL)/(rho_int*a_int^2)
     end
 
-    PP_p5_L = get_PP_5(Ma_L, fa,  1.0)
-    PP_m5_R = get_PP_5(Ma_R, fa, -1.0)
+    PP_p5_L = get_PP_5_L(Ma_L)
+    PP_m5_R = get_PP_5_R(Ma_R)
 
-    p_int = PP_p5_L*pL + PP_m5_R*pR - ausm.Ku*PP_p5_L*PP_m5_R*(rhoL + rhoR)*fa*a_int*(vel_R - vel_L)
+    p_int = PP_p5_L*pL + PP_m5_R*pR - AUSM_Ku*PP_p5_L*PP_m5_R*(rhoL + rhoR)*a_int*(vel_R - vel_L)
 
     vel_int = 0.5*(vel_L + vel_R)
 
@@ -104,28 +112,50 @@ function get_flux_vars(w::Vector{Float64}, idealgas::IdealGas)
     return rho, u, E, p, a
 end
 
-function get_MMa_4(Ma::Float64, fa::Float64, s::Float64)
+function get_MMa_4_L(Ma::Float64)
     if abs(Ma) >= 1
-        MMa_1 = 0.5 * (Ma+s*abs(Ma))
+        MMa_1 = 0.5 * (Ma+abs(Ma))
         MMa_4 = MMa_1
     else
-        MMa_2_p =   s*0.25*(Ma + s*1.0)^2
-        MMa_2_m = - s*0.25*(Ma - s*1.0)^2
-        MMa_4 = MMa_2_p*(1.0 - s*2.0*MMa_2_m)
+        MMa_2_p =   0.25*(Ma + 1.0)^2
+        MMa_2_m = - 0.25*(Ma - 1.0)^2
+        MMa_4 = MMa_2_p*(1.0 - 2.0*MMa_2_m)
     end
     return MMa_4
 end
 
-function get_PP_5(Ma::Float64, fa::Float64, s::Float64)
+function get_MMa_4_R(Ma::Float64)
+    if abs(Ma) >= 1
+        MMa_1 = 0.5 * (Ma-abs(Ma))
+        MMa_4 = MMa_1
+    else
+        MMa_2_p =   -0.25*(Ma - 1.0)^2
+        MMa_2_m =    0.25*(Ma + 1.0)^2
+        MMa_4 = MMa_2_p*(1.0 + 2.0*MMa_2_m)
+    end
+    return MMa_4
+end
+
+function get_PP_5_L(Ma::Float64)
     if abs(Ma) >= 1 
-        MMa_1 = 0.5*(Ma+s*abs(Ma))
+        MMa_1 = 0.5*(Ma+abs(Ma))
         PP_5 = MMa_1 / Ma
     else
-        MMa_2_p =   s*0.25*(Ma+s*1.0)^2
-        MMa_2_m = - s*0.25*(Ma-s*1.0)^2
-        alpha = 3.0/16.0 * (-4.0+5.0*fa^2)
-        PP_5 = MMa_2_p * ((s*2.0 - Ma) - s*16.0*alpha*Ma*MMa_2_m)
+        MMa_2_p =   0.25*(Ma+1.0)^2
+        MMa_2_m = - 0.25*(Ma-1.0)^2
+        PP_5 = MMa_2_p * (2.0 - Ma - 3.0*Ma*MMa_2_m)
     end
     return PP_5
 end
 
+function get_PP_5_R(Ma::Float64)
+    if abs(Ma) >= 1 
+        MMa_1 = 0.5*(Ma-abs(Ma))
+        PP_5 = MMa_1 / Ma
+    else
+        MMa_2_p =   -0.25*(Ma-1.0)^2
+        MMa_2_m =    0.25*(Ma+1.0)^2
+        PP_5 = MMa_2_p * (-2.0 - Ma + 3.0*Ma*MMa_2_m)
+    end
+    return PP_5
+end

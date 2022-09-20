@@ -50,7 +50,7 @@ end
     idealgas = IdealGas(1.4)
 
     # solver
-    solver = FVSolver(RungeKutta(3), Weno(), LaxFriedrichs(); CFL = 0.5)
+    solver = FVSolver(RungeKutta(3), Weno(), Ausm(); CFL = 0.5)
 
     # 外边界
     boundaries = [(FreeBoundary, FreeBoundary), 
@@ -74,7 +74,7 @@ save(f, path*"fluid_"*string(N+FRAME))
 println("FRAME frame                      Date         Δt          t ")
 @printf "%5i %5i   %s  %.3e  %.3e\n" FRAME frame Dates.now() 0 time
 
-while frame < 2 && time < 1
+while frame < 4 && time < 1
     
     global frame, time, FRAME
     

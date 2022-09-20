@@ -34,30 +34,28 @@ function Weno(order::Int = 5)
     end
 end
 
-function Ausm()
-    return Ausm(0.25, 0.75, 1.0)
-end
-
 function getnbound(reco::AbstractReconstruction)
     return ceil(Int,reco.stencil_width/2)
 end
 
 # --------------------------------------------------------
 
-reconstuct(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, muscl::Muscl) = reco_by_muscl(ws, axis, material, muscl)
-reconstuct(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, weno::Weno) = reco_by_weno(ws, axis, material, weno)
+reconstuct(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, muscl::Muscl, flux::AbstractFlux) = reco_by_muscl(ws, axis, material, muscl, flux)
+reconstuct(ws::Array{Float64,2}, axis::Int, material::AbstractMaterial, weno::Weno, flux::AbstractFlux) = reco_by_weno(ws, axis, material, weno, flux)
 
 # --------------------------------------------------------------------------------
 # MUSCL scheme
 
-function reco_by_muscl(ws::Array{Float64, 2}, axis::Int, material::AbstractMaterial, muscl::Muscl)
-
+function reco_by_muscl(ws::Array{Float64, 2}, axis::Int, material::AbstractMaterial, muscl::Muscl, ::LaxFriedrichs)
     wL, wR = muscl_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], material, muscl.limiter)
-
     fL = cons2flux(axis, wL, material)
     fR = cons2flux(axis, wR, material)
-
     return wL, wR, fL, fR
+end
+
+function reco_by_muscl(ws::Array{Float64, 2}, ::Int, material::AbstractMaterial, muscl::Muscl, ::Ausm)
+    wL, wR = muscl_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], material, muscl.limiter)
+    return wL, wR
 end
 
 function muscl_interp(w1::Vector{Float64}, w2::Vector{Float64}, w3::Vector{Float64}, w4::Vector{Float64}, idealgas::IdealGas, ::MinmodLimiter)
@@ -93,11 +91,16 @@ end
 # ---------------------------------------------------------------------
 # WENO-JS scheme
 
-function reco_by_weno(ws::Array{Float64, 2}, axis::Int, idealgas::IdealGas, weno::Weno)
+function reco_by_weno(ws::Array{Float64, 2}, axis::Int, idealgas::IdealGas, weno::Weno, ::LaxFriedrichs)
     wL, wR = weno_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], ws[:,5], ws[:,6], weno)
     fL = cons2flux(axis, wL, idealgas)
     fR = cons2flux(axis, wR, idealgas)
     return wL, wR, fL, fR
+end
+
+function reco_by_weno(ws::Array{Float64, 2}, ::Int, ::IdealGas, weno::Weno, ::Ausm)
+    wL, wR = weno_interp(ws[:,1], ws[:,2], ws[:,3], ws[:,4], ws[:,5], ws[:,6], weno)
+    return wL, wR
 end
 
 "Jiang-Shu's WENO scheme"

@@ -26,12 +26,6 @@ function time_step(f::Fluid{dim}) where dim
     smax = 0.
     smax = @sync @distributed (max) for id in f.grid.domain_indices
         f.marker[id] > 0 ? maximum([smax; sound_speed(f.rho[id], f.p[id], f.material) .+ map(abs, f.u[:,id])])  : 0.
-        # if f.marker[id] > 0 
-        #     s = maximum([smax; sound_speed(f.rho[id], f.p[id], f.material) .+ map(abs, f.u[:,id])]) 
-        # else
-        #     s = 0.
-        # end
-        # s
     end
 
     dt = minimum(f.grid.d) / smax * f.solver.CFL
@@ -44,24 +38,14 @@ function time_step(f::Fluid{dim}) where dim
 end
 
 function solve!(f::Fluid, dt, t)
-    # println("-- solve 1 --")
-    # @time 
+
     backup_w!(f)
     
     for rk = 1:f.solver.rungekutta.order
-        # println("-- solve 2 --")
         @time update_fluxes!(f, t)
-        # println("-- solve 3 --")
-        # @time 
         update_rhs!(f)
-        # println("-- solve 4 --")
-        # @time 
         update_cells!(f, rk, dt)
-        # println("-- solve 5 --")
-        # @time 
         update_bounds!(f)
-        # println("-- solve 6 --")
-        # @time 
         initialize_fluid!(f, t) # Reinitialize the fluid for "everlasting sources" when t > 0
     end
 end
