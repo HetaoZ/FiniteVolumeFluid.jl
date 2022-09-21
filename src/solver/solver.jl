@@ -42,7 +42,7 @@ function solve!(f::Fluid, dt, t)
     backup_w!(f)
     
     for rk = 1:f.solver.rungekutta.order
-        @time update_fluxes!(f, t)
+        update_fluxes!(f, t)
         update_rhs!(f)
         update_cells!(f, rk, dt)
         update_bounds!(f)
@@ -82,13 +82,11 @@ function update_rhs!(f::Fluid{dim}; fluid_markers = (1,)) where dim
         if f.marker[id] in fluid_markers
             
             rhs = zeros(Float64, dim+2)
-
             for axis = 1:dim
                 rhs += (f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)]) / f.grid.d[axis]
             end
             
             f.rhs[:,id] = rhs # + f.source[:,id] # source item
-
         end
     end    
 end 
@@ -105,32 +103,22 @@ function update_fluxes!(f::Fluid{dim}, t::Real; fluid_markers = (1,)) where dim
             ws = zeros(Float64, dim+2, total_stencil_width)
 
             for axis in 1:dim
-
-                # println("-- update_fluxes: 1")
-                # @time                 
+              
                 for jj in 1:total_stencil_width
 
                     w_id = add_cartesian(id, axis, jj-half_stencil_width-1)
                     
-                    # check wall function
-                    # println("-- update_fluxes: 1.0")
-                    # @time
                     point = getcoordinates(f.grid, w_id) 
                     wall_vars = f.wall(point, t)
                     if wall_vars[1]
                         image_point = wall_vars[2]
-                        println("-- update_fluxes: 1.1")
-                        @time image_w = local_fitting!(f, image_point)
+                        image_w = local_fitting!(f, image_point)
                         n = normalize(image_point - point)
                         ws[:,jj] = image2ghost(image_w, n)
                     else                    
-                        # println("-- update_fluxes: 1.2")
-                        # @time 
                         ws[:,jj] = f.w[:, w_id]
                     end
                 end
-                
-                # println("-- update_fluxes: 2")
 
                 f.flux[axis][:,id] = compute_flux(ws[:,1:end-1], axis, f.solver, f.material)
                 f.flux[axis][:,add_cartesian(id, axis, 1)] = compute_flux(ws[:,2:end], axis, f.solver, f.material)
