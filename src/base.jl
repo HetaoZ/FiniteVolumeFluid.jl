@@ -3,7 +3,7 @@
 
 abstract type AbstractGridPrototype end
 
-mutable struct RectangularGrid{dim} <: AbstractGridPrototype
+mutable struct CartesianGrid{dim} <: AbstractGridPrototype
     start
     stop 
     nel::NTuple{dim,Int}

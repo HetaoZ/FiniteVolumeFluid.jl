@@ -1,6 +1,6 @@
 
 # -------------------------------------------------------------
-function Fluid(grid_prototype::RectangularGrid{dim}, material::AbstractMaterial, solver::FVSolver, initial_condition::Function,  boundaries, wall::Function = (x,t)->false) where dim
+function Fluid(grid_prototype::CartesianGrid{dim}, material::AbstractMaterial, solver::FVSolver, initial_condition::Function,  boundaries, wall::Function = (x,t)->false) where dim
 
     grid = StructuredGrid{dim}(grid_prototype, getnbound(solver.reconstruction))
 
@@ -40,6 +40,13 @@ function initialize_fluid!(f::Fluid{dim}, t) where dim
             f.rho[id], f.u[:,id], f.e[id], f.p[id], f.w[:,id] = zero_state
         else
             prim = f.initial_condition(getcoordinates(f.grid, id), t)
+
+            # if id == CartesianIndex(23,3)
+            #     println("-- initialize_fluid: 1")
+            #     println("x = ",getcoordinates(f.grid, id))
+            #     println("prim = ", prim, " t = ", t)
+            #     println("func = ", f.initial_condition([1.0250000000000001, 0.025], 0.01))
+            # end
 
             if typeof(prim) <: Tuple && length(prim) == 4
                 f.rho[id], f.u[:,id], f.e[id], f.p[id] = prim

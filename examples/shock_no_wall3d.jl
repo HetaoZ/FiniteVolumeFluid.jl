@@ -4,7 +4,7 @@ using Printf
 using Dates
 
 # grid
-grid = RectangularGrid{3}((0,0,0), (2,1,1), (20, 10, 10))
+grid = CartesianGrid{3}((0,0,0), (2,1,1), (20, 10, 10))
 
 # material
 idealgas = IdealGas(1.4)

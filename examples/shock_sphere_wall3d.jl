@@ -12,19 +12,20 @@ using Distributed
 
     rho0, u0, p0 = 1.0, [0.,0.,0.], 1.e5
 
-    # supersonic inflow
-    # if x[1] < 0.25
-    #     rho, u, p = behind_shock(rho0, u0[1], p0, 1.2, idealgas, 1); u = [u, 0, 0]
-    #     # rho, u, p = rho0, u0, p0
+    
+    if x[1] < 0.25
+        # supersonic inflow
+        rho, u, p = behind_shock(rho0, u0[1], p0, 1.2, idealgas, 1); u = [u, 0, 0] 
+        # rho, u, p = rho0, u0, p0
 
-    #     e = pressure2e(rho, p, idealgas)
-    #     return rho, u, e, p
-    # else
+        e = pressure2e(rho, p, idealgas)
+        return rho, u, e, p
+    else
         if t == 0.0
             e0 = pressure2e(rho0, p0, idealgas)
             return rho0, u0, e0, p0
         end
-    # end
+    end
 end
 
 "定义壁面和镜像反射点"
@@ -57,7 +58,7 @@ end
 @everywhere function new_fluid(initial_condition, wall)
 
     # grid
-    grid = RectangularGrid{3}((0,0,0), (2,1,1), 2 .* (20, 10, 10))
+    grid = CartesianGrid{3}((0,0,0), (2,1,1), 2 .* (20, 10, 10))
 
     # material
     idealgas = IdealGas(1.4)
@@ -90,16 +91,12 @@ println("FRAME frame                      Date         Δt          t ")
 while frame < 10000 && time < 1
     
     global frame, time, FRAME
-    
-    # println("-- while 0 --")
-    # @time     
+        
     dt = time_step(f)
     @time solve!(f, dt, time)
 
     frame += 1
     time += dt
-
-    
 
     if frame%10 == 0
 

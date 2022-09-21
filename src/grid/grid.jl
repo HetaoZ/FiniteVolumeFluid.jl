@@ -1,5 +1,5 @@
 
-function StructuredGrid{dim}(prototype::RectangularGrid{dim}, nbound) where dim
+function StructuredGrid{dim}(prototype::CartesianGrid{dim}, nbound) where dim
     @assert dim ∈ (1,2,3)
     start, stop = collect(prototype.start), collect(prototype.stop)
     nel = collect(prototype.nel)

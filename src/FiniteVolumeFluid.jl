@@ -11,7 +11,7 @@ using SharedArrays
 
 
 export 
-    RectangularGrid,
+    CartesianGrid,
     IdealGas,
     
     RungeKutta,
