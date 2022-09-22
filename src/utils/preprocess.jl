@@ -19,19 +19,19 @@ function Fluid(grid::StructuredGrid{dim}, material::AbstractMaterial, solver::FV
 
     w = SharedArray(zeros(Float64, (dim+2, N...)))
     wb = SharedArray(zeros(Float64, (dim+2, N...)))
-    rhs = SharedArray(zeros(Float64, (dim+2, N...))) # rhs
 
     flux_array_func = (i) -> SharedArray(zeros(Float64, (2+dim, add_along(N,i,1)...)))
     flux = ntuple(flux_array_func, dim)
 
-    f = Fluid{dim}(grid, material, solver, initial_condition, wall, boundaries, rho, u, e, p, w, wb, flux, rhs, marker)
+    f = Fluid{dim}(grid, material, solver, initial_condition, wall, boundaries, rho, u, e, p, w, wb, flux, marker)
     initialize_fluid!(f, 0.)
     
     return f
 end
 
+function initialize_fluid!(f::Fluid{dim}, t) where dim
 
-function initialize_fluid!(f::Fluid{dim}, t; fluid_markers = (1,)) where dim
+    update_bounds!(f) # 先更新边界再初始化
 
     zero_state = 0., zeros(Float64, dim), 0., 0., zeros(Float64, dim+2)
 
@@ -41,13 +41,6 @@ function initialize_fluid!(f::Fluid{dim}, t; fluid_markers = (1,)) where dim
         else
             prim = f.initial_condition(getcoordinates(f.grid, id), t)
 
-            # if id == CartesianIndex(23,3)
-            #     println("-- initialize_fluid: 1")
-            #     println("x = ",getcoordinates(f.grid, id))
-            #     println("prim = ", prim, " t = ", t)
-            #     println("func = ", f.initial_condition([1.0250000000000001, 0.025], 0.01))
-            # end
-
             if typeof(prim) <: Tuple && length(prim) == 4
                 f.rho[id], f.u[:,id], f.e[id], f.p[id] = prim
                 f.w[:,id] = prim2cons(Float64(prim[1]), Float64.(prim[2]), Float64(prim[3]))
@@ -55,18 +48,6 @@ function initialize_fluid!(f::Fluid{dim}, t; fluid_markers = (1,)) where dim
         end
     end
 
-    clear_fluid!(f, fluid_markers = fluid_markers)
-    update_bounds!(f)
-end
-
-
-function clear_fluid!(f::Fluid{dim}; fluid_markers = (1,)) where dim
-
-    zero_state = 0., zeros(Float64, dim), 0., 0., zeros(Float64, dim+2)
     
-    @sync @distributed for id in f.grid.domain_indices
-        if f.marker[id] ∉ fluid_markers
-            f.rho[id], f.u[:,id], f.e[id], f.p[id], f.w[:,id] = zero_state
-        end
-    end 
 end
+

@@ -129,7 +129,5 @@ mutable struct Fluid{dim}
     w::SharedArray
     wb::SharedArray
     flux::NTuple{dim,SharedArray}
-    rhs::SharedArray
-    # source::SharedArray
     marker::SharedArray
 end

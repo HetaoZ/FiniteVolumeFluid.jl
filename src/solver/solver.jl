@@ -44,8 +44,7 @@ function solve!(f::Fluid, dt, t)
     for rk = 1:f.solver.rungekutta.order
         update_fluxes!(f, t)
         update_cells!(f, rk, dt)
-        # update_bounds! 放在 initialize_fluid! 中
-        initialize_fluid!(f, t + dt) # Reinitialize the fluid for "everlasting sources" when t > 0
+        initialize_fluid!(f, t + dt) # Reinitialize the fluid for "everlasting sources" when t > 0 # update_bounds! 放在 initialize_fluid! 中
     end
 end
 
@@ -91,11 +90,9 @@ function update_fluxes!(f::Fluid{dim}, t::Real; fluid_markers = (1,)) where dim
     @sync @distributed for id in f.grid.domain_indices
         if f.marker[id] in fluid_markers
 
-            
+            ws = zeros(Float64, dim+2, total_stencil_width)
 
             for axis in 1:dim
-
-                ws = zeros(Float64, dim+2, total_stencil_width)
 
                 for jj in 1:total_stencil_width
                     w_id = add_cartesian(id, axis, jj-half_stencil_width-1)
@@ -111,35 +108,40 @@ function update_fluxes!(f::Fluid{dim}, t::Real; fluid_markers = (1,)) where dim
                         ws[:,jj] = f.w[:, w_id]
                     end
                 end
+
                 f.flux[axis][:,id] = compute_flux(ws, axis, f.solver, f.material)
+
+
+                # if axis == 2 && id == CartesianIndex(25, 14)
+                #     println("-- update_fluxes: 1")
+                #     println("marker = ", f.marker[25, 11:17])
+                #     println("ws = "); display(ws);println()
+                # end
                 
                 # 对于靠近外边界或浸入边界的单元，需要额外计算另一侧界面通量
                 next_id = add_cartesian(id, axis, 1)
                 if f.marker[next_id] ∉ fluid_markers
 
-                    for jj in 1:total_stencil_width
-                        w_id = add_cartesian(next_id, axis, jj-half_stencil_width-1)
-                        
-                        point = getcoordinates(f.grid, w_id) 
-                        wall_vars = f.wall(point, t)
-                        if wall_vars[1]
-                            image_point = wall_vars[2]
-                            image_w = local_fitting!(f, image_point)
-                            n = normalize(image_point - point)
-                            ws[:,jj] = image2ghost(image_w, n)
-                        else                    
-                            ws[:,jj] = f.w[:, w_id]
-                        end
-                    end
+                    ws = ws[:, [2:end ; 1]]
 
-                    # if f.marker[next_id] == 10
-                    #     println("-- update_fluxes: 1")
-                    #     println("ws = ", ws)
-                    # end
+                    jj = total_stencil_width
+                    w_id = add_cartesian(next_id, axis, total_stencil_width-half_stencil_width-1)
+                    
+                    point = getcoordinates(f.grid, w_id) 
+                    wall_vars = f.wall(point, t)
+                    if wall_vars[1]
+                        image_point = wall_vars[2]
+                        image_w = local_fitting!(f, image_point)
+                        n = normalize(image_point - point)
+                        ws[:,jj] = image2ghost(image_w, n)
+                    else                    
+                        ws[:,jj] = f.w[:, w_id]
+                    end
 
                     f.flux[axis][:,next_id] = compute_flux(ws, axis, f.solver, f.material)
 
                 end
+
             end
         end
     end    
