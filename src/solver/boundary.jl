@@ -10,7 +10,6 @@ function update_bounds!(f::Fluid{dim}) where dim
             
             if id[axis] < nbound + 1
                 image_id = change_cartesian(id, axis, h->2*nbound+1-h)
-                marker = f.marker[image_id]
                 rho = f.rho[image_id]
                 u = f.u[:, image_id]
                 u[axis] *= f.boundaries[axis][1].coeff
@@ -18,7 +17,6 @@ function update_bounds!(f::Fluid{dim}) where dim
                 p = f.p[image_id]
                 w = prim2cons(rho, u, e)
 
-                f.marker[id] = marker
                 f.rho[id] = rho
                 f.u[:, id] = u
                 f.e[id] = e
@@ -27,7 +25,6 @@ function update_bounds!(f::Fluid{dim}) where dim
             end
             if id[axis] > nel[axis] + nbound
                 image_id = change_cartesian(id, axis, h->2*(nel[axis]+nbound)+1-h)
-                marker = f.marker[image_id]
                 rho = f.rho[image_id]
                 u = f.u[:, image_id]
                 u[axis] *= f.boundaries[axis][2].coeff
@@ -35,7 +32,6 @@ function update_bounds!(f::Fluid{dim}) where dim
                 p = f.p[image_id]
                 w = prim2cons(rho, u, e)
 
-                f.marker[id] = marker
                 f.rho[id] = rho
                 f.u[:, id] = u
                 f.e[id] = e

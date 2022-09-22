@@ -43,9 +43,8 @@ function solve!(f::Fluid, dt, t)
     
     for rk = 1:f.solver.rungekutta.order
         update_fluxes!(f, t)
-        update_rhs!(f)
         update_cells!(f, rk, dt)
-        update_bounds!(f)
+        # update_bounds! 放在 initialize_fluid! 中
         initialize_fluid!(f, t + dt) # Reinitialize the fluid for "everlasting sources" when t > 0
     end
 end
@@ -56,14 +55,22 @@ function backup_w!(f::Fluid)
     end     
 end
 
-function update_cells!(f::Fluid, rk::Int, dt; fluid_markers = (1,))
+"合并 update_rhs! 和 update_cells!"
+function update_cells!(f::Fluid{dim}, rk::Int, dt; fluid_markers = (1,)) where dim
 
     coeff = f.solver.rungekutta.coeffs[rk]
 
     @sync @distributed for id in f.grid.domain_indices
         if f.marker[id] in fluid_markers
 
-                w = coeff[1] * f.w[:, id] + coeff[2] * f.wb[:, id] + coeff[3] * f.rhs[:, id] * dt   
+                rhs = zeros(Float64, dim+2)
+                for axis = 1:dim
+                    rhs += (f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)]) / f.grid.d[axis]
+                end
+                
+                # rhs += f.source[:,id] # source item
+
+                w = coeff[1] * f.w[:, id] + coeff[2] * f.wb[:, id] + coeff[3] * rhs * dt   
 
                 f.w[:, id] = w    
                 rho, u, e, p = cons2prim(w, f.material)
@@ -71,25 +78,9 @@ function update_cells!(f::Fluid, rk::Int, dt; fluid_markers = (1,))
                 f.u[:,id] = u
                 f.e[id] = e
                 f.p[id] = p
-
         end
     end
-end 
-
-function update_rhs!(f::Fluid{dim}; fluid_markers = (1,)) where dim
-
-    @sync @distributed for id in f.grid.domain_indices
-        if f.marker[id] in fluid_markers
-            
-            rhs = zeros(Float64, dim+2)
-            for axis = 1:dim
-                rhs += (f.flux[axis][:,id] - f.flux[axis][:,add_cartesian(id,axis,1)]) / f.grid.d[axis]
-            end
-            
-            f.rhs[:,id] = rhs # + f.source[:,id] # source item
-        end
-    end    
-end 
+end
 
 function update_fluxes!(f::Fluid{dim}, t::Real; fluid_markers = (1,)) where dim
 
@@ -140,6 +131,11 @@ function update_fluxes!(f::Fluid{dim}, t::Real; fluid_markers = (1,)) where dim
                             ws[:,jj] = f.w[:, w_id]
                         end
                     end
+
+                    # if f.marker[next_id] == 10
+                    #     println("-- update_fluxes: 1")
+                    #     println("ws = ", ws)
+                    # end
 
                     f.flux[axis][:,next_id] = compute_flux(ws, axis, f.solver, f.material)
 

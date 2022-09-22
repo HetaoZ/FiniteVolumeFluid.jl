@@ -31,7 +31,7 @@ function Fluid(grid::StructuredGrid{dim}, material::AbstractMaterial, solver::FV
 end
 
 
-function initialize_fluid!(f::Fluid{dim}, t) where dim
+function initialize_fluid!(f::Fluid{dim}, t; fluid_markers = (1,)) where dim
 
     zero_state = 0., zeros(Float64, dim), 0., 0., zeros(Float64, dim+2)
 
@@ -54,4 +54,19 @@ function initialize_fluid!(f::Fluid{dim}, t) where dim
             end
         end
     end
+
+    clear_fluid!(f, fluid_markers = fluid_markers)
+    update_bounds!(f)
+end
+
+
+function clear_fluid!(f::Fluid{dim}; fluid_markers = (1,)) where dim
+
+    zero_state = 0., zeros(Float64, dim), 0., 0., zeros(Float64, dim+2)
+    
+    @sync @distributed for id in f.grid.domain_indices
+        if f.marker[id] ∉ fluid_markers
+            f.rho[id], f.u[:,id], f.e[id], f.p[id], f.w[:,id] = zero_state
+        end
+    end 
 end
