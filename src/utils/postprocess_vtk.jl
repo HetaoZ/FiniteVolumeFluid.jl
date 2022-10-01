@@ -39,22 +39,23 @@ function save(f::Fluid{dim}, datanames::T where T<:Tuple, fields::T where T<:Tup
 end
 
 function create_vtkfile(f::Fluid{dim}, file_name::String, remove_boundary::Bool) where dim
+    vertices = ntuple(i-> [collect(f.grid.x[i]); f.grid.x[i][end]+f.grid.d[i]] .- f.grid.d[i]/2, dim)
     if remove_boundary
         if dim == 1
-            x = f.grid.x[1][f.grid.nbound+1:end-f.grid.nbound]
+            x = vertices[1][f.grid.nbound+1:end-f.grid.nbound]
             file = vtk_grid(file_name, x)
         elseif dim == 2
-            x = f.grid.x[1][f.grid.nbound+1:end-f.grid.nbound]
-            y = f.grid.x[2][f.grid.nbound+1:end-f.grid.nbound]
+            x = vertices[1][f.grid.nbound+1:end-f.grid.nbound]
+            y = vertices[2][f.grid.nbound+1:end-f.grid.nbound]
             file = vtk_grid(file_name, x, y)
         else
-            x = f.grid.x[1][f.grid.nbound+1:end-f.grid.nbound]
-            y = f.grid.x[2][f.grid.nbound+1:end-f.grid.nbound]
-            z = f.grid.x[3][f.grid.nbound+1:end-f.grid.nbound]
+            x = vertices[1][f.grid.nbound+1:end-f.grid.nbound]
+            y = vertices[2][f.grid.nbound+1:end-f.grid.nbound]
+            z = vertices[3][f.grid.nbound+1:end-f.grid.nbound]
             file = vtk_grid(file_name, x, y, z)
         end
     else
-        file = vtk_grid(file_name, f.grid.x[1:dim]...)
+        file = vtk_grid(file_name, vertices...)
     end
 
     return file

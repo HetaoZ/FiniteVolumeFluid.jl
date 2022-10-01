@@ -11,7 +11,7 @@ end
 # -------
 # WENO5-JS
 
-const WENO5_JS_eps = 1.e-14
+const WENO5_JS_eps = 1.e-6
 const WENO5_JS_a = ([1/3 -7/6 11/6],
 [-1/6 5/6 1/3],
 [1/3 5/6 -1/6],
